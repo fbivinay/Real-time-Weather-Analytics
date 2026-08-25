@@ -1,0 +1,45 @@
+# KRaft mode, single broker, no ZooKeeper.
+kraft:
+  enabled: true
+
+controller:
+  replicaCount: 1
+
+broker:
+  replicaCount: 0
+
+listeners:
+  client:
+    protocol: PLAINTEXT
+  controller:
+    protocol: PLAINTEXT
+  interbroker:
+    protocol: PLAINTEXT
+  external:
+    protocol: PLAINTEXT
+
+# advertisedAddress for the external listener is set at install time
+# via `--set` in bootstrap.sh, using the Elastic IP (not known here).
+externalAccess:
+  enabled: true
+  autoDiscovery:
+    enabled: false
+  controller:
+    service:
+      type: NodePort
+      nodePorts:
+        - "9094"
+
+# Bounded retention so the demo instance's disk doesn't fill up.
+extraConfig: |
+  log.retention.hours=24
+
+# Note for the executor: Bitnami chart value paths shift between
+# versions. Before running `bootstrap.sh` for real, run
+# `helm show values bitnami/kafka > /tmp/kafka-chart-defaults.yaml` on
+# the instance and diff the field names above (`controller.*`,
+# `broker.*`, `externalAccess.*`, `listeners.*`) against whatever chart
+# version resolves at install time. Adjust this file if names differ —
+# the intent (KRaft, single node, external NodePort 9094 advertised as
+# the Elastic IP, 24h retention) is what must be preserved, not the
+# literal YAML paths.

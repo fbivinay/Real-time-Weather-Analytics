@@ -1,0 +1,17 @@
+architecture: standalone
+
+replica:
+  replicaCount: 0
+
+auth:
+  enabled: true
+  # existingSecret + existingSecretPasswordKey are set at install time
+  # via --set in bootstrap.sh, once the Secret has been created.
+
+master:
+  persistence:
+    enabled: true
+    size: 4Gi
+
+service:
+  type: ClusterIP
