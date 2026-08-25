@@ -20,7 +20,7 @@ resource "aws_security_group" "weather_pipeline" {
   }
 
   ingress {
-    description = "Kafka external listener (temporary open — see spec Networking follow-up)"
+    description = "Kafka external listener (temporary open - see spec Networking follow-up)"
     from_port   = var.kafka_external_nodeport
     to_port     = var.kafka_external_nodeport
     protocol    = "tcp"
