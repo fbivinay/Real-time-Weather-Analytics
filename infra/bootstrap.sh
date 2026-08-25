@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+export KUBECONFIG="$HOME/.kube/config"
 
 NAMESPACE=weather-pipeline
 ELASTIC_IP="${1:?Usage: bootstrap.sh <elastic-ip>}"
