@@ -40,3 +40,31 @@ resource "aws_security_group" "weather_pipeline" {
     Name    = "weather-pipeline-sg"
   }
 }
+
+resource "aws_instance" "weather_pipeline" {
+  ami                    = data.aws_ami.ubuntu_2204.id
+  instance_type          = var.instance_type
+  key_name               = aws_key_pair.weather_pipeline.key_name
+  vpc_security_group_ids = [aws_security_group.weather_pipeline.id]
+  user_data              = file("${path.module}/user-data.sh")
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = var.root_volume_size_gb
+  }
+
+  tags = {
+    Name    = "weather-pipeline-node"
+    Project = "weather-pipeline"
+  }
+}
+
+resource "aws_eip" "weather_pipeline" {
+  domain   = "vpc"
+  instance = aws_instance.weather_pipeline.id
+
+  tags = {
+    Project = "weather-pipeline"
+    Name    = "weather-pipeline-eip"
+  }
+}
