@@ -37,9 +37,13 @@ externalAccess:
       nodePorts:
         - "9094"
 
-# Bounded retention so the demo instance's disk doesn't fill up.
-extraConfig: |
-  log.retention.hours=24
+# Kafka configuration for single-broker cluster
+# Single broker requires replication factor 1 for internal topics or consumers hang
+overrideConfiguration:
+  log.retention.hours: "24"
+  offsets.topic.replication.factor: "1"
+  transaction.state.log.replication.factor: "1"
+  transaction.state.log.min.isr: "1"
 
 # Note for the executor: Bitnami chart value paths shift between
 # versions. Before running `bootstrap.sh` for real, run
