@@ -1,5 +1,12 @@
 architecture: standalone
 
+image:
+  repository: bitnamilegacy/redis
+
+global:
+  security:
+    allowInsecureImages: true
+
 replica:
   replicaCount: 0
 
