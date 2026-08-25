@@ -21,9 +21,15 @@ helm upgrade --install kafka bitnami/kafka \
 echo "== Setting up Redis auth secret =="
 if ! kubectl get secret redis-auth -n "$NAMESPACE" >/dev/null 2>&1; then
   REDIS_PASSWORD=$(openssl rand -base64 24)
-  kubectl create secret generic redis-auth \
-    --namespace "$NAMESPACE" \
-    --from-literal=redis-password="$REDIS_PASSWORD"
+  kubectl apply -n "$NAMESPACE" -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-auth
+type: Opaque
+stringData:
+  redis-password: ${REDIS_PASSWORD}
+EOF
   echo "Generated new redis-auth secret."
 else
   echo "redis-auth secret already exists, reusing it."
@@ -42,7 +48,7 @@ kubectl get pods -n "$NAMESPACE"
 
 echo "== In-cluster Kafka verification =="
 TOPIC="infra-verify-incluster-$(date +%s)"
-kubectl run kafka-verify --rm --restart=Never \
+kubectl run kafka-verify --rm -i --restart=Never \
   --namespace "$NAMESPACE" \
   --image docker.io/bitnami/kafka:3.7 \
   --command -- bash -c "
