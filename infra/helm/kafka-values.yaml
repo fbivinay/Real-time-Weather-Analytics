@@ -2,6 +2,13 @@
 kraft:
   enabled: true
 
+image:
+  repository: bitnamilegacy/kafka
+
+global:
+  security:
+    allowInsecureImages: true
+
 controller:
   replicaCount: 1
 
