@@ -59,7 +59,7 @@ Kafka verification).
   referenced by Task 2/3.
 - Produces: `data.aws_ami.ubuntu_2204` — consumed by Task 3.
 
-- [ ] **Step 1: Write `infra/versions.tf`**
+- [x] **Step 1: Write `infra/versions.tf`**
 
 ```hcl
 terraform {
@@ -77,7 +77,7 @@ provider "aws" {
 }
 ```
 
-- [ ] **Step 2: Write `infra/variables.tf`**
+- [x] **Step 2: Write `infra/variables.tf`**
 
 ```hcl
 variable "aws_region" {
@@ -116,7 +116,7 @@ variable "kafka_external_nodeport" {
 }
 ```
 
-- [ ] **Step 3: Add the Ubuntu 22.04 AMI data source to `infra/versions.tf`**
+- [x] **Step 3: Add the Ubuntu 22.04 AMI data source to `infra/versions.tf`**
 
 Append to the same file (data sources don't need their own file at this size):
 
@@ -137,12 +137,12 @@ data "aws_ami" "ubuntu_2204" {
 }
 ```
 
-- [ ] **Step 4: Validate**
+- [x] **Step 4: Validate**
 
 Run: `cd infra && terraform init && terraform validate`
 Expected: `Success! The configuration is valid.`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/versions.tf infra/variables.tf
@@ -162,13 +162,13 @@ git commit -m "infra: Terraform scaffolding (provider, variables, AMI lookup)"
 - Produces: `aws_key_pair.weather_pipeline`,
   `aws_security_group.weather_pipeline` — consumed by Task 3.
 
-- [ ] **Step 1: Generate a local SSH key pair (if you don't already have one for this project)**
+- [x] **Step 1: Generate a local SSH key pair (if you don't already have one for this project)**
 
 Run: `ssh-keygen -t ed25519 -f ~/.ssh/weather-pipeline -N ""`
 Expected: creates `~/.ssh/weather-pipeline` (private, keep local) and
 `~/.ssh/weather-pipeline.pub` (public, this is what Terraform reads).
 
-- [ ] **Step 2: Write `infra/main.tf` with the key pair and security group resources**
+- [x] **Step 2: Write `infra/main.tf` with the key pair and security group resources**
 
 ```hcl
 resource "aws_key_pair" "weather_pipeline" {
@@ -215,12 +215,12 @@ resource "aws_security_group" "weather_pipeline" {
 }
 ```
 
-- [ ] **Step 3: Validate**
+- [x] **Step 3: Validate**
 
 Run: `cd infra && terraform validate`
 Expected: `Success! The configuration is valid.`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add infra/main.tf
@@ -242,7 +242,7 @@ git commit -m "infra: key pair and security group"
 - Produces: `aws_instance.weather_pipeline`,
   `aws_eip.weather_pipeline` — consumed by Task 4 (outputs).
 
-- [ ] **Step 1: Write `infra/user-data.sh` — minimal: k3s + Helm only**
+- [x] **Step 1: Write `infra/user-data.sh` — minimal: k3s + Helm only**
 
 ```bash
 #!/bin/bash
@@ -263,12 +263,12 @@ touch /home/ubuntu/user-data-complete
 The `user-data-complete` marker file lets the operator poll for
 completion over SSH before running `bootstrap.sh` (Task 5).
 
-- [ ] **Step 2: Validate script syntax**
+- [x] **Step 2: Validate script syntax**
 
 Run: `bash -n infra/user-data.sh`
 Expected: no output, exit code 0.
 
-- [ ] **Step 3: Append instance and Elastic IP resources to `infra/main.tf`**
+- [x] **Step 3: Append instance and Elastic IP resources to `infra/main.tf`**
 
 ```hcl
 resource "aws_instance" "weather_pipeline" {
@@ -300,12 +300,12 @@ resource "aws_eip" "weather_pipeline" {
 }
 ```
 
-- [ ] **Step 4: Validate**
+- [x] **Step 4: Validate**
 
 Run: `cd infra && terraform validate`
 Expected: `Success! The configuration is valid.`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/user-data.sh infra/main.tf
@@ -326,7 +326,7 @@ git commit -m "infra: EC2 instance, EBS root volume, Elastic IP, minimal user-da
   `terraform output kafka_bootstrap` — used manually by the operator in
   Tasks 5-8.
 
-- [ ] **Step 1: Write `infra/outputs.tf`**
+- [x] **Step 1: Write `infra/outputs.tf`**
 
 ```hcl
 output "public_ip" {
@@ -345,12 +345,12 @@ output "kafka_bootstrap" {
 }
 ```
 
-- [ ] **Step 2: Validate**
+- [x] **Step 2: Validate**
 
 Run: `cd infra && terraform validate`
 Expected: `Success! The configuration is valid.`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add infra/outputs.tf
@@ -369,7 +369,7 @@ git commit -m "infra: Terraform outputs (public IP, SSH command, Kafka bootstrap
 - Produces: values files referenced by `bootstrap.sh` (Task 6) via
   `-f infra/helm/kafka-values.yaml` / `-f infra/helm/redis-values.yaml`.
 
-- [ ] **Step 1: Write `infra/helm/kafka-values.yaml`**
+- [x] **Step 1: Write `infra/helm/kafka-values.yaml`**
 
 ```yaml
 # KRaft mode, single broker, no ZooKeeper.
@@ -419,7 +419,7 @@ the intent (KRaft, single node, external NodePort 9094 advertised as
 the Elastic IP, 24h retention) is what must be preserved, not the
 literal YAML paths.
 
-- [ ] **Step 2: Write `infra/helm/redis-values.yaml`**
+- [x] **Step 2: Write `infra/helm/redis-values.yaml`**
 
 ```yaml
 architecture: standalone
@@ -441,12 +441,12 @@ service:
   type: ClusterIP
 ```
 
-- [ ] **Step 3: Lint both files as YAML**
+- [x] **Step 3: Lint both files as YAML**
 
 Run: `python -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ['infra/helm/kafka-values.yaml','infra/helm/redis-values.yaml']]; print('valid')"`
 Expected: `valid`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add infra/helm/kafka-values.yaml infra/helm/redis-values.yaml
@@ -470,7 +470,7 @@ git commit -m "infra: Kafka (KRaft) and Redis (auth-enabled) Helm values"
   (`kafka.weather-pipeline.svc.cluster.local:9092`,
   `redis-master.weather-pipeline.svc.cluster.local:6379`).
 
-- [ ] **Step 1: Write `infra/bootstrap.sh`**
+- [x] **Step 1: Write `infra/bootstrap.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -533,12 +533,12 @@ the namespace/secret checks skip re-creation, and a failed run can
 just be re-invoked rather than requiring `terraform destroy` +
 recreate.
 
-- [ ] **Step 2: Validate script syntax**
+- [x] **Step 2: Validate script syntax**
 
 Run: `bash -n infra/bootstrap.sh`
 Expected: no output, exit code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add infra/bootstrap.sh
@@ -557,7 +557,7 @@ git commit -m "infra: idempotent bootstrap.sh (Kafka + Redis Helm install, in-cl
 - Produces: pass/fail exit code, used manually as the last gate in
   Task 8 before declaring the sub-project done.
 
-- [ ] **Step 1: Write `infra/verify-external-kafka.sh`**
+- [x] **Step 1: Write `infra/verify-external-kafka.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -592,12 +592,12 @@ from Task 6 — an in-cluster-only check (Task 6, Step 1's final block)
 would still pass even if the external advertised address were wrong,
 since that check never leaves the cluster network.
 
-- [ ] **Step 2: Validate script syntax**
+- [x] **Step 2: Validate script syntax**
 
 Run: `bash -n infra/verify-external-kafka.sh`
 Expected: no output, exit code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add infra/verify-external-kafka.sh
@@ -622,7 +622,7 @@ charges while running.
 - Produces: a working, externally-verified cluster (transient), and
   the operator runbook that sub-project 2 onward will reuse.
 
-- [ ] **Step 1: Write `infra/terraform.tfvars.example`**
+- [x] **Step 1: Write `infra/terraform.tfvars.example`**
 
 ```hcl
 aws_region           = "us-east-1"
@@ -633,7 +633,7 @@ allowed_ssh_cidr      = "YOUR.IP.ADDR.ESS/32"
 kafka_external_nodeport = 9094
 ```
 
-- [ ] **Step 2: Write `infra/README.md` — the operator runbook**
+- [x] **Step 2: Write `infra/README.md` — the operator runbook**
 
 ```markdown
 # Infra runbook
@@ -655,6 +655,12 @@ kafka_external_nodeport = 9094
 
 - [ ] **Step 3: Run the full cycle**
 
+Partial: apply, bootstrap, in-cluster verify, and pod-Running checks
+(sub-steps 1-5) all done — cluster is live at the recorded public IP,
+Kafka/Redis pods Running, in-cluster verify passed. `kcat`-based
+external verify (sub-step 6) and `terraform destroy` (sub-step 7) not
+run — cluster intentionally kept up for sub-projects 2/3.
+
 Run, in order:
 1. `cd infra && terraform init && terraform apply` — confirm when prompted.
 2. `terraform output` — record `public_ip`.
@@ -672,7 +678,7 @@ Run, in order:
 Expected overall: every step above succeeds. This is the sub-project's
 definition of done from the spec's Verification section.
 
-- [ ] **Step 4: Commit the runbook files**
+- [x] **Step 4: Commit the runbook files**
 
 ```bash
 git add infra/terraform.tfvars.example infra/README.md
