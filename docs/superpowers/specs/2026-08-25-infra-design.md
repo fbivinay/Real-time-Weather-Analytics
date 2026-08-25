@@ -168,8 +168,9 @@ enters Terraform state or the repo. `.gitignore` at repo root excludes:
 
 - **Terraform** (`infra/` directory): `main.tf`, `variables.tf`,
   `outputs.tf`. Provider: `aws`. Resources: `aws_key_pair` (public key
-  only), `aws_security_group`, `aws_eip`, `aws_eip_association`,
-  `aws_instance` (with `root_block_device` sized via
+  only), `aws_security_group`, `aws_eip` (with an inline `instance =`
+  argument to associate it — no separate `aws_eip_association`
+  resource needed), `aws_instance` (with `root_block_device` sized via
   `var.root_volume_size_gb`, type `gp3`). Output: Elastic IP, SSH
   command.
 - **k3s install**: via EC2 user-data (`curl -sfL https://get.k3s.io |
@@ -193,9 +194,15 @@ enters Terraform state or the repo. `.gitignore` at repo root excludes:
   (e.g. 24h) so the temporary instance's disk doesn't fill up during a
   multi-day demo window.
 - **kubeconfig**: pulled back to the operator's machine via
-  `scp ubuntu@<eip>:/etc/rancher/k3s/k3s.yaml`, server field rewritten
-  to the Elastic IP, so `kubectl`/`helm` from your machine work against
-  the cluster directly for later sub-projects.
+  `scp ubuntu@<eip>:~/.kube/config`, accessed through an SSH tunnel
+  (`ssh -L 6443:127.0.0.1:6443 ... ubuntu@<eip>`) rather than a direct
+  server-field rewrite to the Elastic IP — port 6443 is deliberately not
+  opened in the security group (only 22 and 9094 are, per the Networking
+  section), so a kubeconfig pointing straight at `https://<eip>:6443`
+  would time out. The kubeconfig's `server: https://127.0.0.1:6443`
+  (k3s's own default) already works unmodified once the tunnel is up, so
+  `kubectl`/`helm` from your machine work against the cluster directly
+  for later sub-projects with no rewrite needed.
 
 ## Verification (definition of done for this sub-project)
 
