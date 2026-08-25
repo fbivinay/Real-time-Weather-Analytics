@@ -69,3 +69,48 @@ resource "aws_eip" "weather_pipeline" {
     Name    = "weather-pipeline-eip"
   }
 }
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_s3_bucket" "weather_pipeline" {
+  bucket = "weather-pipeline-${data.aws_caller_identity.current.account_id}"
+
+  tags = {
+    Project = "weather-pipeline"
+  }
+}
+
+resource "aws_iam_user" "databricks_s3" {
+  name = "weather-pipeline-databricks-s3"
+
+  tags = {
+    Project = "weather-pipeline"
+  }
+}
+
+resource "aws_iam_user_policy" "databricks_s3" {
+  name = "weather-pipeline-databricks-s3-access"
+  user = aws_iam_user.databricks_s3.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ListBucket"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = [aws_s3_bucket.weather_pipeline.arn]
+      },
+      {
+        Sid      = "ReadWriteObjects"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = ["${aws_s3_bucket.weather_pipeline.arn}/*"]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_access_key" "databricks_s3" {
+  user = aws_iam_user.databricks_s3.name
+}
