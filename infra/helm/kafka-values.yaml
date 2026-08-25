@@ -1,6 +1,6 @@
-# KRaft mode, single broker, no ZooKeeper.
-kraft:
-  enabled: true
+# KRaft mode, single broker, no ZooKeeper — this chart version (32.4.3) has
+# no top-level `kraft` key; ZooKeeper support was removed entirely and KRaft
+# is the only supported mode, so no key is needed to enable it.
 
 image:
   repository: bitnamilegacy/kafka
@@ -25,12 +25,11 @@ listeners:
   external:
     protocol: PLAINTEXT
 
-# advertisedAddress for the external listener is set at install time
-# via `--set` in bootstrap.sh, using the Elastic IP (not known here).
+# externalAccess.controller.service.domain (the advertised address for
+# the external listener) is set at install time via `--set` in
+# bootstrap.sh, using the Elastic IP (not known here).
 externalAccess:
   enabled: true
-  autoDiscovery:
-    enabled: false
   controller:
     service:
       type: NodePort
@@ -45,12 +44,10 @@ overrideConfiguration:
   transaction.state.log.replication.factor: "1"
   transaction.state.log.min.isr: "1"
 
-# Note for the executor: Bitnami chart value paths shift between
-# versions. Before running `bootstrap.sh` for real, run
-# `helm show values bitnami/kafka > /tmp/kafka-chart-defaults.yaml` on
-# the instance and diff the field names above (`controller.*`,
-# `broker.*`, `externalAccess.*`, `listeners.*`) against whatever chart
-# version resolves at install time. Adjust this file if names differ —
-# the intent (KRaft, single node, external NodePort 9094 advertised as
-# the Elastic IP, 24h retention) is what must be preserved, not the
-# literal YAML paths.
+# Value paths above were validated against bitnami/kafka chart 32.4.3
+# (app version 4.0.0), which is the version pinned via --version in
+# bootstrap.sh. If that pin is ever bumped, re-check these field names
+# with `helm show values bitnami/kafka --version <new-version>` first —
+# Bitnami has changed value paths across versions before (that's how
+# `advertisedHost` and `autoDiscovery.enabled` ended up as silent no-ops
+# here, fixed in the final review pass).
