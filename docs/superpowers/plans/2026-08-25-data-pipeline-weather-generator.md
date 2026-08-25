@@ -60,13 +60,13 @@ client, no native build step), `pytest` for tests, Docker, Kubernetes
 - Each reading dict has exactly the keys: `station_id`, `city`,
   `timestamp`, `temperature`, `humidity`, `rainfall`, `wind_speed`.
 
-- [ ] **Step 1: Write `producer/requirements-dev.txt`**
+- [x] **Step 1: Write `producer/requirements-dev.txt`**
 
 ```
 pytest==8.3.4
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `producer/tests/test_weather_generator.py`:
 
@@ -155,12 +155,12 @@ def test_generate_all_readings_returns_five_in_station_order():
         ["ST001", "ST002", "ST003", "ST004", "ST005"]
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `cd producer && pip install -r requirements-dev.txt && python -m pytest tests/test_weather_generator.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'weather_generator'`
 
-- [ ] **Step 4: Write `producer/weather_generator.py`**
+- [x] **Step 4: Write `producer/weather_generator.py`**
 
 ```python
 import random
@@ -221,12 +221,12 @@ def generate_all_readings(rand=random):
     return [generate_reading(station, rand=rand) for station in STATIONS]
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_weather_generator.py -v`
 Expected: PASS, 6/6 tests passing
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add producer/weather_generator.py producer/tests/test_weather_generator.py producer/requirements-dev.txt
@@ -254,13 +254,13 @@ git commit -m "data-pipeline: weather generator pure logic (stations, normal/ext
   this task's own tests use to run a bounded number of cycles.
   Consumed by Task 3 (Dockerfile's `CMD`) and Task 5 (live deployment).
 
-- [ ] **Step 1: Write `producer/requirements.txt`**
+- [x] **Step 1: Write `producer/requirements.txt`**
 
 ```
 kafka-python-ng==2.2.3
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `producer/tests/test_kafka_producer.py`:
 
@@ -311,12 +311,12 @@ def test_ensure_topic_exists_ignores_already_exists_error():
     fake_admin.close.assert_called_once()
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_kafka_producer.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'kafka_producer'`
 
-- [ ] **Step 4: Write `producer/kafka_producer.py`**
+- [x] **Step 4: Write `producer/kafka_producer.py`**
 
 ```python
 import json
@@ -376,17 +376,17 @@ if __name__ == "__main__":
     run()
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_kafka_producer.py -v`
 Expected: PASS, 5/5 tests passing
 
-- [ ] **Step 6: Run the full test suite together**
+- [x] **Step 6: Run the full test suite together**
 
 Run: `python -m pytest tests/ -v`
 Expected: PASS, 11/11 tests passing, pristine output (no warnings)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add producer/kafka_producer.py producer/tests/test_kafka_producer.py producer/requirements.txt
@@ -408,7 +408,7 @@ git commit -m "data-pipeline: Kafka producer (idempotent topic creation, send lo
   `fbivinay/weather-generator:latest` — consumed by Task 4's K8s
   manifest and Task 5's live deployment.
 
-- [ ] **Step 1: Write `producer/.dockerignore`**
+- [x] **Step 1: Write `producer/.dockerignore`**
 
 ```
 tests/
@@ -418,7 +418,7 @@ __pycache__/
 .pytest_cache/
 ```
 
-- [ ] **Step 2: Write `producer/Dockerfile`**
+- [x] **Step 2: Write `producer/Dockerfile`**
 
 ```dockerfile
 FROM python:3.12-slim
@@ -433,7 +433,7 @@ COPY weather_generator.py kafka_producer.py .
 CMD ["python", "kafka_producer.py"]
 ```
 
-- [ ] **Step 3: Build the image**
+- [x] **Step 3: Build the image**
 
 Run: `cd producer && docker build -t fbivinay/weather-generator:latest .`
 Expected: build succeeds, no errors.
@@ -443,7 +443,7 @@ and the smoke test below are blocked — report BLOCKED with that
 specific detail rather than skipping the build, since Task 5 depends
 on a working image.
 
-- [ ] **Step 4: Smoke-test the image (import check, no live Kafka needed)**
+- [x] **Step 4: Smoke-test the image (import check, no live Kafka needed)**
 
 Run:
 ```bash
@@ -455,7 +455,7 @@ dependencies and no import/syntax errors, without needing a live Kafka
 connection (the container's default `CMD` would otherwise hang trying
 to connect to Kafka at startup).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add producer/Dockerfile producer/.dockerignore
@@ -474,7 +474,7 @@ git commit -m "data-pipeline: Dockerfile for weather generator"
   namespace `weather-pipeline` (from sub-project 1's infra).
 - Produces: a manifest consumed by Task 5's `kubectl apply`.
 
-- [ ] **Step 1: Write `producer/k8s-deployment.yaml`**
+- [x] **Step 1: Write `producer/k8s-deployment.yaml`**
 
 ```yaml
 apiVersion: apps/v1
@@ -500,7 +500,7 @@ spec:
           imagePullPolicy: Always
 ```
 
-- [ ] **Step 2: Validate as YAML**
+- [x] **Step 2: Validate as YAML**
 
 Run: `python -c "import yaml; yaml.safe_load(open('producer/k8s-deployment.yaml')); print('valid')"`
 Expected: `valid`
@@ -509,7 +509,7 @@ Expected: `valid`
 k3s API server — this step only catches YAML syntax errors early,
 without requiring cluster connectivity.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add producer/k8s-deployment.yaml
@@ -543,7 +543,7 @@ point.
   `producer/k8s-deployment.yaml` (Task 4), the live k3s cluster and
   `weather-pipeline` namespace (sub-project 1).
 
-- [ ] **Step 1: Confirm the cluster is reachable, or bring it up**
+- [x] **Step 1: Confirm the cluster is reachable, or bring it up**
 
 Run: `kubectl get nodes` (using the kubeconfig from sub-project 1's
 runbook — either the SSH-tunneled config, or run this over SSH on the
@@ -554,7 +554,7 @@ If no cluster is reachable, follow `infra/README.md`'s runbook
 (`terraform apply` → wait for user-data → confirm `kubectl get nodes`)
 before continuing. This incurs real AWS cost while the instance runs.
 
-- [ ] **Step 2: Log in to Docker Hub and push the image**
+- [x] **Step 2: Log in to Docker Hub and push the image**
 
 Run: `docker login` (interactive, one-time), then:
 ```bash
@@ -563,25 +563,25 @@ cd producer && docker push fbivinay/weather-generator:latest
 Expected: push succeeds, image visible at
 `https://hub.docker.com/r/fbivinay/weather-generator`.
 
-- [ ] **Step 3: Deploy to the cluster**
+- [x] **Step 3: Deploy to the cluster**
 
 Run: `kubectl apply -f producer/k8s-deployment.yaml`
 Expected: `deployment.apps/weather-generator created` (or `configured`
 if re-running).
 
-- [ ] **Step 4: Confirm the pod reaches Running**
+- [x] **Step 4: Confirm the pod reaches Running**
 
 Run: `kubectl get pods -n weather-pipeline -l app=weather-generator -w`
 (watch until `Running`, then Ctrl-C)
 Expected: pod status `Running`, no `CrashLoopBackOff`.
 
-- [ ] **Step 5: Confirm logs show successful production**
+- [x] **Step 5: Confirm logs show successful production**
 
 Run: `kubectl logs -n weather-pipeline -l app=weather-generator --tail=20`
 Expected: log lines like `Produced 5 messages`, repeating roughly every
 5 seconds, no tracebacks.
 
-- [ ] **Step 6: Confirm messages are actually in the topic with the right shape**
+- [x] **Step 6: Confirm messages are actually in the topic with the right shape**
 
 Run (from inside the cluster, same pattern sub-project 1 used for its
 own Kafka verification — exec into the running Kafka broker pod):
@@ -593,7 +593,7 @@ Expected: 5 JSON lines, each with exactly the keys `station_id`,
 `city`, `timestamp`, `temperature`, `humidity`, `rainfall`,
 `wind_speed`.
 
-- [ ] **Step 7: Observe for at least one extreme reading**
+- [x] **Step 7: Observe for at least one extreme reading**
 
 Run (let it run a couple minutes, watching logs or re-running the
 consumer command above with a higher `--max-messages`):
@@ -608,7 +608,15 @@ container, not just in unit tests.
 
 This step satisfies the spec's Verification item 5.
 
-- [ ] **Step 8: No commit** — this task is verification-only; nothing
+- [x] **Step 8: No commit** — this task is verification-only; nothing
   new to commit unless Steps 1-7 revealed a bug requiring a code fix,
   in which case fix it, re-run the relevant steps, and commit the fix
   with a message describing what broke and why.
+
+**Verified 2026-08-25 16:52 IST:** re-confirmed live via SSH tunnel to
+sub-project 1's cluster. Pod `weather-generator-66fdcb5bc8-zp4kk`
+Running 51m, logs show steady `Produced 5 messages`. Dumped full
+`weather-data` topic (3655 msgs, from-beginning) and grepped for
+extreme thresholds — found multiple: heat (44.3°C, 44.7°C), heavy
+rain (72.0mm, 83.8mm), high wind (68.1, 87.7 km/h). Message shape
+matches spec exactly (7 keys, correct types).
