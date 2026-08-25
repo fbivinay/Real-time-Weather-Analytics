@@ -80,6 +80,15 @@ resource "aws_s3_bucket" "weather_pipeline" {
   }
 }
 
+resource "aws_s3_bucket_public_access_block" "weather_pipeline" {
+  bucket = aws_s3_bucket.weather_pipeline.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 resource "aws_iam_user" "databricks_s3" {
   name = "weather-pipeline-databricks-s3"
 
