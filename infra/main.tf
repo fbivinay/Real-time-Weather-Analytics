@@ -114,15 +114,29 @@ resource "aws_iam_user_policy" "databricks_s3" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "ListBucket"
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
+        Sid    = "ListBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+          "s3:ListBucketMultipartUploads",
+        ]
         Resource = [aws_s3_bucket.weather_pipeline.arn]
       },
       {
-        Sid      = "ReadWriteObjects"
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject"]
+        # Spark's file sink commits by writing a temp object and renaming it,
+        # and S3A implements rename as copy + delete. A write-only policy
+        # therefore fails the stream with a 403 on _spark_metadata rather than
+        # simply skipping cleanup. Multipart permissions are required for the
+        # same commit path once a part file exceeds the single-PUT threshold.
+        Sid    = "ReadWriteObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload",
+          "s3:ListMultipartUploadParts",
+        ]
         Resource = ["${aws_s3_bucket.weather_pipeline.arn}/*"]
       }
     ]
