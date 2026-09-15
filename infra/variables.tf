@@ -36,3 +36,9 @@ variable "kafka_external_nodeport" {
   type        = number
   default     = 9094
 }
+
+variable "api_nodeport" {
+  description = "NodePort serving the read-only weather API to the dashboard"
+  type        = number
+  default     = 30080
+}

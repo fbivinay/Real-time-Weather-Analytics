@@ -28,3 +28,8 @@ output "databricks_s3_secret_key" {
   value       = aws_iam_access_key.databricks_s3.secret
   sensitive   = true
 }
+
+output "api_url" {
+  description = "Base URL of the read-only weather API"
+  value       = "http://${aws_eip.weather_pipeline.public_ip}:${var.api_nodeport}"
+}
