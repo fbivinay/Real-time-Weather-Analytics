@@ -1,0 +1,12 @@
+# Everything in this repo is executed on Linux (k3s nodes, containers, EC2
+# user-data). Git for Windows checking files out with CRLF breaks shebangs
+# outright: `#!/usr/bin/env bash\r` fails with "bash\r: No such file or
+# directory". Force LF so a Windows checkout still produces runnable scripts.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.tf   text eol=lf
+*.hcl  text eol=lf
