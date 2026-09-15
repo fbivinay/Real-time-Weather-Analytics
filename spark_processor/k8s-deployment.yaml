@@ -1,0 +1,87 @@
+# The job's Python lives in a ConfigMap built straight from the real source
+# files (see deploy.sh), so there is no image to build or push and the .py
+# files on disk stay the single source of truth.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spark-checkpoints
+  namespace: weather-pipeline
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-processor
+  namespace: weather-pipeline
+  labels:
+    app: weather-processor
+spec:
+  replicas: 1
+  strategy:
+    # The checkpoint PVC is ReadWriteOnce and Spark checkpoints tolerate exactly
+    # one writer, so the old pod must go before the new one starts.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: weather-processor
+  template:
+    metadata:
+      labels:
+        app: weather-processor
+    spec:
+      securityContext:
+        # Stock Spark image runs as uid 185; it must own the checkpoint volume.
+        fsGroup: 185
+      containers:
+        - name: weather-processor
+          image: apache/spark:3.5.3-python3
+          imagePullPolicy: IfNotPresent
+          command: ["/opt/spark/bin/spark-submit"]
+          args:
+            - "--master"
+            - "local[*]"
+            - "--driver-memory"
+            - "2g"
+            - "--packages"
+            - "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4"
+            - "--conf"
+            - "spark.jars.ivy=/checkpoints/.ivy2"
+            - "/app/streaming_job.py"
+          env:
+            - name: PYTHONPATH
+              value: "/app"
+            - name: S3_BUCKET
+              value: "weather-pipeline-021448121627"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-creds
+                  key: access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-creds
+                  key: secret-access-key
+          volumeMounts:
+            - name: code
+              mountPath: /app
+            - name: checkpoints
+              mountPath: /checkpoints
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "3Gi"
+      volumes:
+        - name: code
+          configMap:
+            name: weather-processor-code
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: spark-checkpoints
