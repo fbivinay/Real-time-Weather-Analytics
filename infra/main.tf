@@ -58,6 +58,15 @@ resource "aws_instance" "weather_pipeline" {
     Name    = "weather-pipeline-node"
     Project = "weather-pipeline"
   }
+
+  # data.aws_ami.ubuntu_2204 is most_recent, so it re-resolves to whatever
+  # Canonical published last. Without this, an unrelated apply (a changed SSH
+  # CIDR, say) silently destroys and recreates the node - taking k3s, Kafka,
+  # Redis and every running workload with it. Rebuilding on a newer AMI has to
+  # be an explicit `terraform taint` / destroy, never a side effect.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 resource "aws_eip" "weather_pipeline" {
