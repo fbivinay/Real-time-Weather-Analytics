@@ -27,6 +27,17 @@ resource "aws_security_group" "weather_pipeline" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    # Read-only API consumed by the Vercel dashboard, which has no fixed egress
+    # range to narrow this to. Serves only derived weather readings, no secrets
+    # and no writes.
+    description = "Weather API NodePort for the dashboard"
+    from_port   = var.api_nodeport
+    to_port     = var.api_nodeport
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     description = "All outbound"
     from_port   = 0
