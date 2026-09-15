@@ -129,13 +129,14 @@ raw_df = spark.readStream.format("kafka")
    plus `count(*)` as `reading_count`. Sinks: `weather-processed`
    (Kafka) and S3 (`aggregates/`).
 
-Each of the 3 branches has 2 sinks (Kafka + S3) — 6 `writeStream`
-queries total, each with its own checkpoint directory under DBFS
-(`/checkpoints/weather-processing/<branch>-<sink>/`). DBFS is durable
+Raw has 1 sink (S3 only); alert and aggregate each have 2 sinks (Kafka
++ S3) — 5 `writeStream` queries total, each with its own checkpoint
+directory under DBFS (`/checkpoints/weather-processing/<branch>-<sink>/`).
+DBFS is durable
 across cluster restarts within the CE workspace, so checkpoints survive
 between scheduled runs even though the cluster itself terminates.
 
-**Run control:** after starting all 6 queries,
+**Run control:** after starting all 5 queries,
 `spark.streams.awaitAnyTermination(timeout=300_000)` (5 minutes), then
 explicitly `.stop()` every query, then the notebook returns. The Job is
 scheduled every 15 minutes — each run processes 5 minutes actively,
@@ -212,10 +213,13 @@ s3://<bucket>/alerts/date=.../part-*.parquet
 - `databricks/weather_processing.py` — the Structured Streaming
   notebook source (Databricks `# Databricks notebook source` header
   format): widgets, secret scope reads, `readStream`, the 3 branches,
-  6 `writeStream` sinks, run-control logic. Imports `check_alert` and
-  the threshold constants from `transforms.py` for the alert branch's
-  filter condition, so the single source of truth for thresholds lives
-  in the tested module.
+  5 `writeStream` sinks, run-control logic. Imports `ALERT_THRESHOLDS`
+  from `transforms.py` and builds the alert branch's filter/columns as
+  Spark column expressions from it (not calling `check_alert` directly
+  — that's dict-oriented, exercised by the unit tests as the
+  executable spec of the logic; the notebook mirrors the same
+  threshold values from the same constant, so there's one source of
+  truth for the numbers even though the two code paths differ).
 - `databricks/tests/test_transforms.py` — unit tests for `check_alert`
   covering: no alert (normal ranges), each of the three alert types
   triggering, and the boundary condition (exactly at threshold does
