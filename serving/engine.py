@@ -84,7 +84,11 @@ class Engine:
         if sid not in self.network.stations:
             return
         key = (w.get("source"), w.get("scenario"))
-        regressed = self.observed_at is not None and w["observed_to"] < self.observed_at - REGRESSION
+        # A clock that jumps back means a replay or simulation looped. Live
+        # data only goes back when a restarted ingestor backfills history,
+        # which must not wipe open incidents.
+        regressed = (key[0] != "live" and self.observed_at is not None
+                     and w["observed_to"] < self.observed_at - REGRESSION)
         if self.mode_key is not None and (key != self.mode_key or regressed):
             log.info("mode %s -> %s%s: resetting state", self.mode_key, key, " (clock went back)" if regressed else "")
             self._reset()
