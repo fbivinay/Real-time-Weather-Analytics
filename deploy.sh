@@ -66,10 +66,16 @@ bring_up() {
     ssh_node "sed -i 's/\r\$//' bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh $ip"
   fi
 
-  say "4/6  Producer"
-  scp -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new \
-    "$REPO_ROOT/producer/k8s-deployment.yaml" "ubuntu@$ip:~/producer-deploy.yaml"
-  kube apply -f '~/producer-deploy.yaml'
+  say "4/6  Topics + ingestor"
+  # Topics are created here, once, rather than by whichever app starts
+  # first - every consumer can then start in any order.
+  for topic in weather-data weather-quarantine weather-features weather-decisions; do
+    kube exec kafka-controller-0 -n weather-pipeline -- kafka-topics.sh \
+      --bootstrap-server localhost:9092 --create --if-not-exists --topic "$topic" \
+      --partitions 1 --replication-factor 1 --config retention.ms=86400000
+  done
+  kube delete deployment weather-generator -n weather-pipeline --ignore-not-found
+  bash "$REPO_ROOT/ingestor/deploy.sh" "$ip"
 
   say "5/6  Spark processor"
   bash "$REPO_ROOT/spark_processor/deploy.sh" "$ip"
