@@ -51,7 +51,33 @@ function Incident({ incident, flash, onSelectRegion }) {
   );
 }
 
-export default function IncidentFeed({ incidents, lastEvent, onSelectRegion }) {
+function PreAlert({ alert, onSelectRegion }) {
+  const action = alert.actions?.[0];
+  return (
+    <article className="incident prealert" aria-label={`${alert.region_name} developing risk`}>
+      <div className="incident-head">
+        <h3>
+          <button type="button" className="linklike" onClick={() => onSelectRegion?.(alert.region)}>
+            {alert.region_name}
+          </button>
+        </h3>
+        <span className={`chip chip-${alert.forecast_category}`}>{CATEGORY_LABEL[alert.forecast_category]} in 60 min</span>
+        {alert.hazard && <span className="chip chip-plain">{HAZARD_LABEL[alert.hazard] ?? alert.hazard}</span>}
+      </div>
+      {action && (
+        <ul className="actions">
+          <li className="action">
+            <span className={`prio prio-${action.priority}`}>{action.priority}</span>
+            <span>{action.text}</span>
+            <span className="why">{action.owner} · {action.because}</span>
+          </li>
+        </ul>
+      )}
+    </article>
+  );
+}
+
+export default function IncidentFeed({ incidents, prealerts, lastEvent, onSelectRegion }) {
   const sorted = [...(incidents ?? [])].sort(
     (a, b) => (RANK[b.category] ?? 0) - (RANK[a.category] ?? 0) || (b.score ?? 0) - (a.score ?? 0),
   );
@@ -69,6 +95,12 @@ export default function IncidentFeed({ incidents, lastEvent, onSelectRegion }) {
           sorted.map((inc) => (
             <Incident key={inc.id} incident={inc} flash={inc.id === flashId} onSelectRegion={onSelectRegion} />
           ))
+        )}
+        {(prealerts ?? []).length > 0 && (
+          <>
+            <h3 className="feed-sub">Developing in the next hour (forecast)</h3>
+            {prealerts.map((a) => <PreAlert key={a.region} alert={a} onSelectRegion={onSelectRegion} />)}
+          </>
         )}
       </div>
     </section>

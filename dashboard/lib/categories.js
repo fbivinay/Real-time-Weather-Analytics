@@ -15,7 +15,7 @@ export const HAZARD_LABEL = {
   rain: "Heavy rain",
   wind: "High wind",
   heat: "Heat",
-  fog: "Fog",
+  fog: "Low visibility",
 };
 
 export const RANK = { unknown: -1, low: 0, medium: 1, high: 2, critical: 3 };

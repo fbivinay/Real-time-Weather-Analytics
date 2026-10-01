@@ -242,6 +242,8 @@ p  { margin: 0; }
 .prio-P2 { background: var(--risk-high-wash); border-color: transparent; }
 .prio-P3 { background: var(--surface-sunk); border-color: transparent; }
 .action .why { font-size: .74rem; color: var(--muted); }
+.prealert { border-style: dashed; }
+.feed-sub { font-size: .82rem; color: var(--ink-soft); margin-top: .35rem; }
 .timeline { font-size: .72rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .2rem .7rem; }
 
 /* ---------- location detail ---------- */

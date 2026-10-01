@@ -21,7 +21,6 @@ ANCHORS = {
 CATEGORIES = ((75, "critical"), (50, "high"), (25, "medium"), (0, "low"))
 RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 CLIMATOLOGY_BOOST = 1.15
-FORECAST_WEIGHT = 0.8
 RECENT = timedelta(minutes=15)
 ACCUMULATION = timedelta(hours=3)
 ANTECEDENT_WEIGHT = 0.25
@@ -107,13 +106,15 @@ def _hazard_level(inp, clim):
 
 
 def assess(inputs, clim=None, forecast_inputs=None):
-    f, hazard, unusual, now_score = _hazard_level(inputs, clim)
-    score, developing, fc_score, fc_category = now_score, False, None, None
+    """Observed risk. A forecast never raises the score - incidents follow
+    what is happening - but marks the location `developing` when the +60
+    min category is worse, which drives pre-alerts instead."""
+    f, hazard, unusual, score = _hazard_level(inputs, clim)
+    developing, fc_score, fc_category = False, None, None
     if forecast_inputs:
         _, fc_hazard, _, fc_score = _hazard_level(forecast_inputs, clim)
         fc_category = category(fc_score)
-        developing = RANK[fc_category] > RANK[category(now_score)]
-        score = max(now_score, round(FORECAST_WEIGHT * fc_score))
+        developing = RANK[fc_category] > RANK[category(score)]
         if hazard is None and developing:
             hazard = fc_hazard
     return {

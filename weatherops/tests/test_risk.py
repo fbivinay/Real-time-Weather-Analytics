@@ -103,11 +103,11 @@ def test_climatology_boost_when_unusual_for_the_place():
     assert usual["score"] == base["score"]
 
 
-def test_forecast_raises_score_and_flags_developing():
+def test_forecast_flags_developing_without_inflating_the_observed_score():
     a = risk.assess(inputs(), forecast_inputs=inputs(rain=40, gust=80))
     assert a["developing"] is True
     assert a["forecast_category"] == "critical"
-    assert a["score"] >= round(0.8 * a["forecast_score"]) - 1
+    assert a["score"] == 0 and a["category"] == "low"      # incidents follow observations
     assert a["hazard"] in {"rain", "wind"}
 
 

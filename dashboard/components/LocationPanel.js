@@ -9,7 +9,7 @@ const FACTORS = [
   ["rain", "Rain"],
   ["wind", "Wind"],
   ["heat", "Heat"],
-  ["fog", "Fog"],
+  ["fog", "Visibility"],
 ];
 
 const VERDICT = {
@@ -82,7 +82,13 @@ export default function LocationPanel({ location, history }) {
         {a?.developing && <span className="chip chip-plain">Developing</span>}
       </div>
       {location.verdict && <p className="muted" style={{ fontSize: ".82rem" }}>{VERDICT[location.verdict.status]}{location.verdict.reason ? ` (${location.verdict.reason} on ${location.verdict.field})` : ""}</p>}
-      {forecast && <p style={{ fontSize: ".86rem" }}>Forecast: {forecast}</p>}
+      {location.forecast && (
+        <p style={{ fontSize: ".84rem" }}>
+          <strong>In 60 min (LightGBM):</strong> rain {num(location.forecast.rain_mmph, 1)} mm/h · gust{" "}
+          {num(location.forecast.gust_kmph)} km/h · {num(location.forecast.temperature_c, 1)} °C · visibility{" "}
+          {num(location.forecast.visibility_m)} m{forecast ? ` - ${forecast}` : ""}
+        </p>
+      )}
       {a && (
         <div className="factors" aria-label="Risk factors">
           {FACTORS.map(([key, label]) => (

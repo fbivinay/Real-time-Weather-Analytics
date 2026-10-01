@@ -96,6 +96,7 @@ def build_snapshot(r, now=None):
         "routes": _hash(r, "state:routes"),
         "hubs": _hash(r, "state:hubs"),
         "incidents": list(_hash(r, "incidents:active").values()),
+        "prealerts": _loads(r.get("state:prealerts")) or [],
         "dq": _loads(r.get("dq:summary")) or {},
         "engine": _loads(r.get("health:engine")),
         "health": build_health(r, now),

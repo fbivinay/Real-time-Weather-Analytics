@@ -139,7 +139,12 @@ export default function Page() {
             <Legend />
           </div>
         </section>
-        <IncidentFeed incidents={state.incidents} lastEvent={state.lastEvent} onSelectRegion={(city) => setSelected(`REF-${city}`)} />
+        <IncidentFeed
+          incidents={state.incidents}
+          prealerts={state.prealerts}
+          lastEvent={state.lastEvent}
+          onSelectRegion={(city) => setSelected(`REF-${city}`)}
+        />
       </div>
 
       <div className="grid-lower">
