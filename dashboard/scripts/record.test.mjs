@@ -22,3 +22,19 @@ test("keeps the first snapshot, incidents and spaced ticks; drops pings; rebases
 test("a recording without a snapshot is empty", () => {
   assert.deepEqual(select([[0, { type: "tick" }]]), []);
 });
+
+test("deltas from dropped ticks are carried into the next kept tick", () => {
+  const frames = [
+    [0, { type: "snapshot", locations: {}, routes: {} }],
+    [1000, { type: "tick", kpis: { k: 1 }, routes: { A: { status: "high" } }, locations: {}, hubs: {}, removed: { locations: [], routes: [], hubs: [] } }],
+    [2000, { type: "tick", kpis: { k: 2 }, routes: { B: { status: "critical" } }, locations: { X: { score: 1 } }, hubs: {}, removed: { locations: ["Y"], routes: [], hubs: [] } }],
+    [9000, { type: "tick", kpis: { k: 3 }, routes: {}, locations: { X: { score: 2 } }, hubs: {}, removed: { locations: [], routes: [], hubs: [] } }],
+  ];
+  const kept = select(frames, 5000);
+  assert.equal(kept.length, 3); // snapshot, tick@1000, tick@9000 (carrying tick@2000)
+  const last = kept[2][1];
+  assert.deepEqual(Object.keys(last.routes), ["B"]);
+  assert.equal(last.locations.X.score, 2);
+  assert.deepEqual(last.removed.locations, ["Y"]);
+  assert.equal(last.kpis.k, 3);
+});
