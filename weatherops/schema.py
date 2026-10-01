@@ -33,7 +33,8 @@ FUTURE_TOLERANCE_S = 120
 
 
 def parse_ts(s):
-    dt = datetime.fromisoformat(s)
+    # Spark's image runs Python 3.8, whose fromisoformat() rejects "Z".
+    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
@@ -48,7 +49,7 @@ def validate(reading, now=None):
         return "unparseable"
     try:
         event_time = parse_ts(reading["event_time"])
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, AttributeError):
         return "unparseable"
 
     for field in MEASUREMENTS:

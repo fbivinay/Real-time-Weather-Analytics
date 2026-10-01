@@ -89,3 +89,9 @@ def test_timestamp_round_trip():
 
 def test_measurements_and_ranges_agree():
     assert set(schema.MEASUREMENTS) == set(schema.RANGES)
+
+
+def test_parse_ts_accepts_spark_millisecond_format():
+    # Spark's to_json writes timestamps as 2026-10-01T10:15:30.000Z
+    assert schema.parse_ts("2026-10-01T10:15:30.000Z") == NOW
+    assert schema.parse_ts("2026-10-01T10:15:30+00:00") == NOW

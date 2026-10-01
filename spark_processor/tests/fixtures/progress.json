@@ -1,0 +1,21 @@
+{
+  "id": "0b1c8a1e-6a3c-4a8e-9a43-3c2f6f5f0b11",
+  "runId": "7a6b2a55-1d3f-4f4e-8f1e-2d0d2c9f3e21",
+  "name": "features-kafka",
+  "timestamp": "2026-10-01T10:00:05.000Z",
+  "batchId": 42,
+  "numInputRows": 160,
+  "inputRowsPerSecond": 16.0,
+  "processedRowsPerSecond": 80.5,
+  "durationMs": {"addBatch": 1500, "getBatch": 1, "latestOffset": 3, "queryPlanning": 20, "triggerExecution": 1987, "walCommit": 30},
+  "eventTime": {"avg": "2026-10-01T09:59:55.000Z", "max": "2026-10-01T10:00:05.000Z", "min": "2026-10-01T09:59:45.000Z", "watermark": "2026-10-01T09:59:50.000Z"},
+  "stateOperators": [
+    {"operatorName": "dedupeWithinWatermark", "numRowsTotal": 300, "numRowsUpdated": 160, "allUpdatesTimeMs": 12, "numRowsRemoved": 150, "allRemovalsTimeMs": 2, "commitTimeMs": 30, "memoryUsedBytes": 90000, "numRowsDroppedByWatermark": 3, "numShufflePartitions": 1, "numStateStoreInstances": 1,
+     "customMetrics": {"loadedMapCacheHitCount": 80, "loadedMapCacheMissCount": 0, "numDroppedDuplicateRows": 5, "stateOnCurrentVersionSizeBytes": 70000}},
+    {"operatorName": "stateStoreSave", "numRowsTotal": 160, "numRowsUpdated": 160, "allUpdatesTimeMs": 9, "numRowsRemoved": 150, "allRemovalsTimeMs": 1, "commitTimeMs": 25, "memoryUsedBytes": 80000, "numRowsDroppedByWatermark": 1, "numShufflePartitions": 1, "numStateStoreInstances": 1,
+     "customMetrics": {"loadedMapCacheHitCount": 80, "loadedMapCacheMissCount": 0, "stateOnCurrentVersionSizeBytes": 60000}}
+  ],
+  "sources": [{"description": "KafkaV2[Subscribe[weather-data]]", "startOffset": {"weather-data": {"0": 1000}}, "endOffset": {"weather-data": {"0": 1160}}, "latestOffset": {"weather-data": {"0": 1172}}, "numInputRows": 160, "inputRowsPerSecond": 16.0, "processedRowsPerSecond": 80.5,
+               "metrics": {"avgOffsetsBehindLatest": "12.0", "maxOffsetsBehindLatest": "12", "minOffsetsBehindLatest": "12"}}],
+  "sink": {"description": "org.apache.spark.sql.kafka010.KafkaSourceProvider$KafkaTable@1a2b3c", "numOutputRows": 150}
+}
