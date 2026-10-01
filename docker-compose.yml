@@ -98,3 +98,13 @@ services:
         apt-get update -qq && apt-get install -y -qq --no-install-recommends libgomp1 >/dev/null &&
         pip install -q kafka-python-ng==2.2.3 redis==5.2.1 lightgbm==4.6.0 numpy==2.2.6 &&
         exec python -m serving.engine
+
+  api:
+    <<: *python
+    ports: ["8000:8000"]
+    command:
+      - sh
+      - -c
+      - >-
+        pip install -q redis==5.2.1 fastapi==0.115.12 "uvicorn[standard]==0.34.2" &&
+        exec uvicorn serving.api:app --host 0.0.0.0 --port 8000

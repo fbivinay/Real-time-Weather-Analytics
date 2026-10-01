@@ -79,3 +79,18 @@ def test_decision_records_cover_incident_events_and_snapshots():
     recs = redis_state.decision_records(result(events=[{"type": "opened", "incident": inc}], snapshot=snap))
     assert recs[0] == {"record_type": "incident", "event": "opened", **inc}
     assert recs[1] == snap
+
+
+def test_changed_locations_append_to_a_bounded_series():
+    r = FakeRedis()
+    loc = {"station_id": "REF-CHE", "observed_at": "2026-11-20T08:00:00Z",
+           "assessment": {"score": 40}, "values": {"rain_avg": 12.0, "gust_max": 40.0, "temp_avg": 27.0,
+                                                    "visibility_min": 5000.0}}
+    prev = {}
+    for k in range(redis_state.SERIES_POINTS + 5):
+        loc = dict(loc, observed_at=f"2026-11-20T08:{k % 60:02d}:00Z", assessment={"score": k})
+        prev = redis_state.write_tick(r, result(locations={"REF-CHE": loc}), prev, NOW)
+    series = [json.loads(p) for p in r.lrange("series:REF-CHE", 0, -1)]
+    assert len(series) == redis_state.SERIES_POINTS
+    assert series[0]["score"] == redis_state.SERIES_POINTS + 4      # newest first
+    assert set(series[0]) == {"t", "score", "rain", "gust", "temp", "vis"}
