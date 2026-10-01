@@ -122,10 +122,12 @@ def baseline(city, t):
     """Calm conditions with a diurnal cycle on local solar time."""
     hour = (t.hour + t.minute / 60 + city.lon / 15) % 24
     diurnal = math.cos(2 * math.pi * (hour - 15) / 24)   # +1 mid-afternoon
-    mean = 31 - 0.25 * max(0.0, city.lat - 12) + _seed_offset(city.id, "t")
+    # Calm means calm: afternoon highs stay near 33 C so the baseline never
+    # reaches the heat-index anchors by itself.
+    mean = 29 - 0.25 * max(0.0, city.lat - 12) + _seed_offset(city.id, "t")
     wind = 8 + 4 * max(0.0, diurnal) + 2 * _seed_offset(city.id, "w")
     return {
-        "temperature_c": mean + 5 * diurnal,
+        "temperature_c": mean + 4 * diurnal,
         "humidity_pct": 62 - 18 * diurnal,
         "rain_mmph": 0.0,
         "wind_kmph": wind,
