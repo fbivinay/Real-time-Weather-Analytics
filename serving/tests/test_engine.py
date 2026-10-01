@@ -156,3 +156,13 @@ def test_empty_engine_tick_is_well_formed():
     assert out["kpis"]["active_incidents"] == 0
     assert out["mode"] is None
     assert out["health"]["latency_p95_s"] is None
+
+
+def test_location_values_are_rounded_for_the_wire():
+    e = Engine(NETWORK)
+    w = window("REF-CHE", START, 1, 3, rain=12.345678)
+    w["temp_avg"] = 27.123456
+    e.ingest_window(w)
+    loc = e.tick(START + timedelta(seconds=40))["locations"]["REF-CHE"]
+    assert loc["values"]["rain_avg"] == 12.3 and loc["values"]["temp_avg"] == 27.1
+    assert "inputs" not in loc["assessment"]      # engine-internal; not shipped to every client

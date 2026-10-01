@@ -1,8 +1,10 @@
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 
 export const metadata = {
-  title: "Weather Pipeline — Live",
-  description: "Live weather station readings, alerts and per-minute aggregates.",
+  title: "WeatherOps — Weather risk for logistics",
+  description:
+    "Real-time weather risk and operations intelligence for Indian logistics: risk scores, affected routes and deliveries, incidents and recommended actions.",
 };
 
 export default function RootLayout({ children }) {

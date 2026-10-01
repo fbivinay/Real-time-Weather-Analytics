@@ -115,3 +115,9 @@ def test_slow_client_is_dropped_without_blocking_others():
         assert slow.get_nowait() is None    # close sentinel for the dropped client
 
     asyncio.run(scenario())
+
+
+def test_snapshot_includes_engine_health_so_metrics_show_on_load():
+    with client(populated()) as c:
+        snap = c.get("/api/snapshot").json()
+    assert snap["engine"]["latency_p50_s"] == 47.5

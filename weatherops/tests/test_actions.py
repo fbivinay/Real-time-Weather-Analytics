@@ -96,3 +96,12 @@ def test_actions_are_sorted_by_priority():
     prios = [a["priority"] for a in acts]
     assert prios == sorted(prios)
     assert len({a["id"] for a in acts}) == len(acts)
+
+
+def test_every_significant_hazard_gets_its_actions_not_only_the_dominant_one():
+    a = assessment("critical", "wind", 95, gust_kmph=103)
+    a["factors"] = {"rain": 0.7, "wind": 0.85, "heat": 0.0, "fog": 0.0}
+    acts = actions.recommend("CHE", "Chennai", a, impact(lastmile_routes()), NETWORK)
+    assert any("two-wheeler" in t for t in texts(acts))      # rain, though wind dominates
+    assert any("Notify drivers" in t for t in texts(acts))   # wind
+    assert len({x["id"] for x in acts}) == len(acts)

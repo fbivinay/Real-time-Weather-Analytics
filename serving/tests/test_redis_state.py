@@ -94,3 +94,28 @@ def test_changed_locations_append_to_a_bounded_series():
     assert len(series) == redis_state.SERIES_POINTS
     assert series[0]["score"] == redis_state.SERIES_POINTS + 4      # newest first
     assert set(series[0]) == {"t", "score", "rain", "gust", "temp", "vis"}
+
+
+def test_advancing_weather_clock_is_not_a_mode_change():
+    r = FakeRedis()
+    prev = redis_state.write_tick(r, result(), {}, NOW)
+    later = {"source": "sim", "scenario": "storm-chennai", "observed_at": "2026-11-20T08:15:00Z", "speed": 31}
+    redis_state.write_tick(r, result(mode=later), prev, NOW + timedelta(seconds=10))
+    assert messages(r, "mode") == []
+    assert messages(r, "tick")[-1]["locations"] == {}     # nothing re-sent
+    assert json.loads(r.get("state:mode"))["observed_at"] == "2026-11-20T08:15:00Z"
+
+
+def test_ticks_send_static_fields_only_for_new_locations():
+    r = FakeRedis()
+    full = {"station_id": "REF-CHE", "name": "Chennai", "lat": 13.08, "lon": 80.27, "kind": "reference",
+            "city_id": "CHE", "hub_id": None, "verdict": None, "assessment": {"score": 10},
+            "values": {"rain_avg": 1.0}, "observed_at": "a", "forecast": None}
+    prev = redis_state.write_tick(r, result(locations={"REF-CHE": full}), {}, NOW)
+    assert messages(r, "tick")[-1]["locations"]["REF-CHE"]["lat"] == 13.08       # new: full object
+    changed = dict(full, assessment={"score": 60}, observed_at="b")
+    redis_state.write_tick(r, result(locations={"REF-CHE": changed}), prev, NOW)
+    delta = messages(r, "tick")[-1]["locations"]["REF-CHE"]
+    assert delta["assessment"]["score"] == 60
+    assert "lat" not in delta and "name" not in delta
+    assert json.loads(r.hget("state:locations", "REF-CHE"))["lat"] == 13.08     # Redis keeps it all

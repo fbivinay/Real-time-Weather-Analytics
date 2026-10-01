@@ -121,7 +121,7 @@ def assess(inputs, clim=None, forecast_inputs=None):
         "category": category(score),
         "hazard": hazard,
         "factors": {k: round(v, 3) for k, v in f.items()},
-        "inputs": {k: inputs.get(k) for k in INPUT_KEYS},
+        "inputs": {k: None if inputs.get(k) is None else round(inputs[k], 1) for k in INPUT_KEYS},
         "unusual": unusual,
         "developing": developing,
         "forecast_score": fc_score,

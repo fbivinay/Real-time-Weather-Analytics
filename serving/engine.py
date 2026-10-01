@@ -29,6 +29,14 @@ EMPTY_KPIS = {"routes_affected": {"linehaul": 0, "lastmile": 0}, "deliveries_act
               "deliveries_at_risk": 0, "hubs_affected": 0, "locations_high": 0, "active_incidents": 0}
 
 
+def _wire(field, value):
+    """Round for the wire: ticks carry every station, and float noise
+    (27.123456) was most of their size."""
+    if value is None:
+        return None
+    return round(value) if field == "visibility_min" else round(value, 1)
+
+
 def _percentile(values, q):
     if not values:
         return None
@@ -169,7 +177,7 @@ class Engine:
             rain_24h[ref.city_id] = values[-1] if values else None
 
         month = str(observed.month)
-        locations, scores = {}, {}
+        locations, scores, assessments = {}, {}, {}
         for sid, ws in series.items():
             st = self.network.stations[sid]
             verdict = verdicts.get(sid) if st.kind == "sensor" else None
@@ -179,11 +187,14 @@ class Engine:
                 clim = (self.climatology.get(st.city_id) or {}).get(month)
                 assessment = risk.assess(inputs, clim, self._forecasts.get(st.city_id))
                 scores[sid] = assessment["score"]
+                assessments[sid] = assessment
             latest = ws[-1]
             locations[sid] = {
                 "station_id": sid, "kind": st.kind, "name": st.name, "city_id": st.city_id, "hub_id": st.hub_id,
-                "lat": st.lat, "lon": st.lon, "verdict": verdict, "assessment": assessment,
-                "values": {f: latest.get(f) for f in VALUE_FIELDS},
+                "lat": st.lat, "lon": st.lon, "verdict": verdict,
+                # inputs stay engine-side (actions quote them); clients need the rest
+                "assessment": {k: v for k, v in assessment.items() if k != "inputs"} if assessment else None,
+                "values": {f: _wire(f, latest.get(f)) for f in VALUE_FIELDS},
                 "observed_at": fmt_ts(latest["observed_to"]), "forecast": self._forecasts.get(st.city_id),
             }
 
@@ -207,7 +218,7 @@ class Engine:
         regions = {}
         for city_id, sids in by_region.items():
             city = self.network.cities[city_id]
-            worst = locations[max(sids, key=lambda s: scores[s])]["assessment"]
+            worst = assessments[max(sids, key=lambda s: scores[s])]
             routes = [{"id": rid, "kind": self.network.routes[rid].kind, "name": self.network.routes[rid].name,
                        "active": out["routes"][rid]["active"], "status": out["routes"][rid]["status"]}
                       for rid in affected_routes.get(city_id, [])]
