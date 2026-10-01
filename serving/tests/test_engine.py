@@ -223,3 +223,28 @@ def test_engine_runs_with_the_committed_models():
     assert loc["forecast"] is not None
     assert set(loc["forecast"]) >= {"rain_mmph", "gust_kmph", "temperature_c", "visibility_m"}
     assert loc["forecast"]["rain_mmph"] >= 0
+
+
+def test_live_backfill_after_an_ingestor_restart_does_not_wipe_state():
+    e = Engine(NETWORK)
+    for k in range(3):
+        e.ingest_window(window("REF-CHE", START + k * timedelta(seconds=30), k + 1, k + 1, rain=40,
+                               source="live", scenario=None, observed=START + k * timedelta(seconds=30)))
+    e.tick(START + timedelta(seconds=100))
+    e.ingest_window(window("REF-CHE", START + timedelta(seconds=90), 4, 4, rain=40, source="live", scenario=None,
+                           observed=START + timedelta(seconds=90)))
+    e.tick(START + timedelta(seconds=110))
+    assert e.incidents.active()
+    # restarted ingestor replays the last three hours first
+    e.ingest_window(window("REF-CHE", START + timedelta(seconds=120), 1, 1, source="live", scenario=None,
+                           observed=START - timedelta(hours=3)))
+    assert e.incidents.active(), "live backfill must not reset incidents"
+
+
+def test_replay_loop_still_resets_when_the_clock_goes_back():
+    e = Engine(NETWORK)
+    e.ingest_window(window("REF-CHE", START, 1, 1, rain=40, source="replay", scenario="x",
+                           observed=START + timedelta(hours=30)))
+    e.ingest_window(window("REF-CHE", START + timedelta(seconds=30), 2, 2, source="replay", scenario="x",
+                           observed=START))
+    assert e.observed_at == START
