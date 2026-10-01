@@ -10,7 +10,7 @@ import { useEffect, useReducer, useState } from "react";
 import { createPlayer, initialState, reduce } from "./feed-core.mjs";
 
 const HOST = process.env.NEXT_PUBLIC_API_HOST || "";
-const RECORDING = process.env.NEXT_PUBLIC_RECORDING || "michaung-2023";
+const RECORDING = process.env.NEXT_PUBLIC_RECORDING || "montha-2025";
 const FALLBACK_AFTER_MS = 15000;
 const HEALTH_EVERY_MS = 30000;
 
