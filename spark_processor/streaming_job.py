@@ -1,157 +1,108 @@
+"""WeatherOps stream processor: validation, quarantine, deduplication,
+late-data handling and 30-second feature windows.
+
+One Kafka read per query (Spark does not share sources between queries),
+six queries in all:
+
+  weather-data ─┬─ raw ──────────────────────────────▶ S3 raw/
+                ├─ invalid ─▶ weather-quarantine ─────▶ S3 quarantine/
+                └─ valid → dedup → 30 s windows ─▶ weather-features ─▶ S3 features/
+  weather-decisions ────────────────────────────────▶ S3 decisions/
+"""
 import os
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    avg, col, count, date_format, from_json, lit, max as spark_max,
-    min as spark_min, struct, to_json, when, window,
-)
-from pyspark.sql.types import (
-    DoubleType, IntegerType, StringType, StructField, StructType, TimestampType,
-)
+from pyspark.sql import functions as F
 
-from transforms import ALERT_THRESHOLDS
+from spark_processor import plans
+from spark_processor.listener import make_listener
 
-KAFKA_BOOTSTRAP = os.environ.get(
-    "KAFKA_BOOTSTRAP", "kafka.weather-pipeline.svc.cluster.local:9092"
-)
-SOURCE_TOPIC = os.environ.get("SOURCE_TOPIC", "weather-data")
-SINK_TOPIC = os.environ.get("SINK_TOPIC", "weather-processed")
-S3_BUCKET = os.environ["S3_BUCKET"]
-CHECKPOINT_ROOT = os.environ.get("CHECKPOINT_ROOT", "/checkpoints/weather-processing")
+KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka.weather-pipeline.svc.cluster.local:9092")
+S3_BUCKET = os.environ.get("S3_BUCKET")  # unset: no lake writes (local smoke runs)
+CHECKPOINT_ROOT = os.environ.get("CHECKPOINT_ROOT", "/checkpoints/weatherops")
+FAST, SLOW = "5 seconds", "60 seconds"  # Kafka sinks feed the engine; S3 sinks batch to limit small files
 
 spark = (
     SparkSession.builder
-    .appName("weather-processing")
+    .appName("weatherops-processor")
     # S3A reads AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY from the pod env,
     # so no credential ever lands in Spark conf or the Spark UI.
-    .config(
-        "spark.hadoop.fs.s3a.aws.credentials.provider",
-        "com.amazonaws.auth.EnvironmentVariableCredentialsProvider",
-    )
+    .config("spark.hadoop.fs.s3a.aws.credentials.provider",
+            "com.amazonaws.auth.EnvironmentVariableCredentialsProvider")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-    .config("spark.sql.streaming.metricsEnabled", "true")
+    .config("spark.sql.session.timeZone", "UTC")
+    # 200 shuffle partitions means 200 state stores per stateful operator; on
+    # a 2-core node that is pure scheduling overhead for ~160 stations.
+    .config("spark.sql.shuffle.partitions", "2")
     .getOrCreate()
 )
 spark.sparkContext.setLogLevel("WARN")
 
-READING_SCHEMA = StructType([
-    StructField("station_id", StringType()),
-    StructField("city", StringType()),
-    StructField("timestamp", TimestampType()),
-    StructField("temperature", DoubleType()),
-    StructField("humidity", IntegerType()),
-    StructField("rainfall", DoubleType()),
-    StructField("wind_speed", DoubleType()),
-])
+if os.environ.get("REDIS_HOST"):
+    import redis
 
-raw_kafka_df = (
-    spark.readStream.format("kafka")
-    .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-    .option("subscribe", SOURCE_TOPIC)
-    .option("startingOffsets", "latest")
-    .load()
-)
-
-parsed_df = (
-    raw_kafka_df
-    .select(from_json(col("value").cast("string"), READING_SCHEMA).alias("data"))
-    .select("data.*")
-)
+    spark.streams.addListener(make_listener(redis.Redis(
+        host=os.environ["REDIS_HOST"], port=6379, password=os.environ.get("REDIS_PASSWORD"),
+        decode_responses=True, socket_timeout=5,
+    )))
 
 
-def write_kafka(df, name):
+def kafka_stream(topic):
     return (
-        df.select(to_json(struct("*")).alias("value"))
-        .writeStream
-        .format("kafka")
-        .outputMode("append")
+        spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-        .option("topic", SINK_TOPIC)
-        .option("checkpointLocation", f"{CHECKPOINT_ROOT}/{name}-kafka")
-        .start()
+        .option("subscribe", topic)
+        .option("startingOffsets", "latest")
+        # Kafka keeps 24 h and the node is torn down between sessions; losing
+        # expired offsets must not stop the stream.
+        .option("failOnDataLoss", "false")
+        .load()
     )
 
 
-def write_s3(df, path, name):
+def to_kafka(df, topic, name):
     return (
-        df.withColumn("date", date_format(col("timestamp"), "yyyy-MM-dd"))
-        .writeStream
-        .format("parquet")
-        .outputMode("append")
-        .option("path", f"s3a://{S3_BUCKET}/{path}")
-        .option("checkpointLocation", f"{CHECKPOINT_ROOT}/{name}-s3")
-        .partitionBy("date")
+        df.select(F.to_json(F.struct("*")).alias("value"))
+        .writeStream.queryName(name).format("kafka").outputMode("append")
+        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
+        .option("topic", topic)
+        .option("checkpointLocation", f"{CHECKPOINT_ROOT}/{name}")
+        .trigger(processingTime=FAST)
         .start()
     )
 
 
-raw_query = write_s3(parsed_df, "raw", "raw")
-
-alert_types = list(ALERT_THRESHOLDS.items())
-
-alert_type_col = when(
-    col(alert_types[0][1]["field"]) > alert_types[0][1]["threshold"], alert_types[0][0]
-)
-for name, rule in alert_types[1:]:
-    alert_type_col = alert_type_col.when(col(rule["field"]) > rule["threshold"], name)
-alert_type_col = alert_type_col.otherwise(None)
-
-field_col = when(col("alert_type") == alert_types[0][0], lit(alert_types[0][1]["field"]))
-for name, rule in alert_types[1:]:
-    field_col = field_col.when(col("alert_type") == name, lit(rule["field"]))
-
-threshold_col = when(col("alert_type") == alert_types[0][0], lit(alert_types[0][1]["threshold"]))
-for name, rule in alert_types[1:]:
-    threshold_col = threshold_col.when(col("alert_type") == name, lit(rule["threshold"]))
-
-value_col = when(col("alert_type") == alert_types[0][0], col(alert_types[0][1]["field"]))
-for name, rule in alert_types[1:]:
-    value_col = value_col.when(col("alert_type") == name, col(rule["field"]))
-
-alerts_df = (
-    parsed_df
-    .withColumn("alert_type", alert_type_col)
-    .filter(col("alert_type").isNotNull())
-    .withColumn("field", field_col)
-    .withColumn("threshold", threshold_col)
-    .withColumn("value", value_col)
-    .withColumn("record_type", lit("alert"))
-    .select("record_type", "station_id", "city", "timestamp", "alert_type", "field", "value", "threshold")
-)
-
-alert_kafka_query = write_kafka(alerts_df, "alerts")
-alert_s3_query = write_s3(alerts_df, "alerts", "alerts")
-
-aggregates_df = (
-    parsed_df
-    .withWatermark("timestamp", "2 minutes")
-    .groupBy(window(col("timestamp"), "1 minute"), col("station_id"), col("city"))
-    .agg(
-        avg("temperature").alias("avg_temperature"),
-        spark_min("temperature").alias("min_temperature"),
-        spark_max("temperature").alias("max_temperature"),
-        avg("humidity").alias("avg_humidity"),
-        avg("rainfall").alias("avg_rainfall"),
-        avg("wind_speed").alias("avg_wind_speed"),
-        count("*").alias("reading_count"),
+def to_s3(df, path, name, date_col):
+    if not S3_BUCKET:
+        return None
+    return (
+        df.withColumn("date", F.date_format(F.col(date_col), "yyyy-MM-dd"))
+        .writeStream.queryName(name).format("parquet").outputMode("append")
+        .option("path", f"s3a://{S3_BUCKET}/{path}")
+        .option("checkpointLocation", f"{CHECKPOINT_ROOT}/{name}")
+        .partitionBy("date")
+        .trigger(processingTime=SLOW)
+        .start()
     )
-    .select(
-        lit("aggregate").alias("record_type"),
-        col("station_id"),
-        col("city"),
-        col("window.start").alias("window_start"),
-        col("window.end").alias("window_end"),
-        col("avg_temperature"), col("min_temperature"), col("max_temperature"),
-        col("avg_humidity"), col("avg_rainfall"), col("avg_wind_speed"),
-        col("reading_count"),
-    )
-)
 
-agg_kafka_query = write_kafka(aggregates_df, "aggregates")
-agg_s3_query = write_s3(
-    aggregates_df.withColumnRenamed("window_start", "timestamp"), "aggregates", "aggregates"
-)
 
-# Unlike the Databricks scheduled-Job variant, this runs as a long-lived
-# Deployment: no timeout, restarted by Kubernetes if it dies.
+readings = plans.with_reject_reason(plans.parse(kafka_stream("weather-data")))
+to_s3(readings.drop("raw"), "raw", "raw-s3", "kafka_ts")
+
+quarantined = plans.quarantine(readings)
+to_kafka(quarantined, "weather-quarantine", "quarantine-kafka")
+to_s3(quarantined, "quarantine", "quarantine-s3", "kafka_ts")
+
+features = plans.features(readings.filter(F.col("reject_reason").isNull()))
+to_kafka(features, "weather-features", "features-kafka")
+to_s3(features, "features", "features-s3", "window_start")
+
+decisions = kafka_stream("weather-decisions").select(
+    F.col("value").cast("string").alias("json"),
+    F.get_json_object(F.col("value").cast("string"), "$.record_type").alias("record_type"),
+    F.col("timestamp").alias("kafka_ts"),
+)
+to_s3(decisions, "decisions", "decisions-s3", "kafka_ts")
+
+# Long-lived Deployment: no timeout, Kubernetes restarts it if a query dies.
 spark.streams.awaitAnyTermination()
