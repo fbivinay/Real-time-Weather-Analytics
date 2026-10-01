@@ -11,6 +11,7 @@ from weatherops.schema import parse_ts
 
 CHANNEL = "weatherops:events"
 HISTORY_DAYS = 7
+SERIES_POINTS = 120   # per-station sparkline for the station detail view
 HASHES = {"locations": "state:locations", "routes": "state:routes", "hubs": "state:hubs"}
 
 
@@ -41,6 +42,15 @@ def write_tick(r, result, previous, now):
             pipe.hdel(key, *removed)
         nxt[name] = cur
         deltas[name] = {k: result[name][k] for k in changed}
+
+    for sid in deltas["locations"]:
+        loc = result["locations"][sid]
+        values = loc.get("values") or {}
+        point = {"t": loc.get("observed_at"), "score": (loc.get("assessment") or {}).get("score"),
+                 "rain": values.get("rain_avg"), "gust": values.get("gust_max"),
+                 "temp": values.get("temp_avg"), "vis": values.get("visibility_min")}
+        pipe.lpush(f"series:{sid}", _dumps(point))
+        pipe.ltrim(f"series:{sid}", 0, SERIES_POINTS - 1)
 
     pipe.set("state:kpis", _dumps(result["kpis"]))
     pipe.set("dq:summary", _dumps(result["dq"]))

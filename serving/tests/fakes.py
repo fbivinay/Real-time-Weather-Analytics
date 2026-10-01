@@ -61,6 +61,20 @@ class FakeRedis:
         end = None if stop == -1 else stop + 1
         return [m for m, _ in ordered[start:end]]
 
+    # lists
+    def lpush(self, key, *values):
+        lst = self.kv.setdefault(key, [])
+        for v in values:
+            lst.insert(0, v)
+
+    def ltrim(self, key, start, stop):
+        lst = self.kv.get(key, [])
+        self.kv[key] = lst[start:stop + 1]
+
+    def lrange(self, key, start, stop):
+        lst = self.kv.get(key, [])
+        return lst[start:None if stop == -1 else stop + 1]
+
     # pub/sub
     def publish(self, channel, message):
         self.published.append((channel, message))
