@@ -62,6 +62,7 @@ def write_tick(r, result, previous, now):
         pipe.ltrim(f"series:{sid}", 0, SERIES_POINTS - 1)
 
     pipe.set("state:kpis", _dumps(result["kpis"]))
+    pipe.set("state:prealerts", _dumps(result.get("prealerts", [])))
     pipe.set("dq:summary", _dumps(result["dq"]))
     pipe.set("health:engine", _dumps(result["health"]))
 
@@ -82,7 +83,8 @@ def write_tick(r, result, previous, now):
     pipe.publish(CHANNEL, _dumps({"type": "tick", "mode": result["mode"], "kpis": result["kpis"],
                                   **deltas, "removed": {n: [k for k in previous.get(n, {}) if k not in nxt[n]]
                                                         for n in HASHES},
-                                  "incidents": result["incidents"], "dq": result["dq"],
+                                  "incidents": result["incidents"], "prealerts": result.get("prealerts", []),
+                                  "dq": result["dq"],
                                   "health": result["health"]}))
     for event in result["events"]:
         pipe.publish(CHANNEL, _dumps({"type": "incident", "event": event["type"], "incident": event["incident"]}))

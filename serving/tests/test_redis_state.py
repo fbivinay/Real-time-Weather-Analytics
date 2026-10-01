@@ -16,6 +16,7 @@ def result(locations=None, routes=None, incidents=None, events=None, mode=None, 
         "kpis": {"active_incidents": 0},
         "events": events or [],
         "incidents": incidents or [],
+        "prealerts": [{"region": "CHE", "forecast_category": "high"}],
         "dq": {"suspect": []},
         "health": {"tick_at": "2026-11-20T08:00:00Z"},
         "snapshot": snapshot,
@@ -119,3 +120,10 @@ def test_ticks_send_static_fields_only_for_new_locations():
     assert delta["assessment"]["score"] == 60
     assert "lat" not in delta and "name" not in delta
     assert json.loads(r.hget("state:locations", "REF-CHE"))["lat"] == 13.08     # Redis keeps it all
+
+
+def test_prealerts_are_stored_and_published():
+    r = FakeRedis()
+    redis_state.write_tick(r, result(), {}, NOW)
+    assert json.loads(r.get("state:prealerts"))[0]["region"] == "CHE"
+    assert messages(r, "tick")[-1]["prealerts"][0]["forecast_category"] == "high"

@@ -166,3 +166,60 @@ def test_location_values_are_rounded_for_the_wire():
     loc = e.tick(START + timedelta(seconds=40))["locations"]["REF-CHE"]
     assert loc["values"]["rain_avg"] == 12.3 and loc["values"]["temp_avg"] == 27.1
     assert "inputs" not in loc["assessment"]      # engine-internal; not shipped to every client
+
+
+class StubForecaster:
+    card = {"version": "stub"}
+
+    def __init__(self):
+        self.calls = 0
+
+    def predict(self, rows, current):
+        self.calls += 1
+        return [{"rain_mmph": 45.0, "gust_kmph": 30.0, "temperature_c": 26.0, "visibility_m": 4000.0,
+                 "humidity_pct": c.get("humidity_pct"), "rain_accum_mm": None} for c in current]
+
+
+def test_forecast_marks_developing_risk_and_raises_a_pre_alert():
+    stub = StubForecaster()
+    e = Engine(NETWORK, forecaster=stub)
+    for k in range(3):
+        e.ingest_window(window("REF-CHE", START + k * timedelta(seconds=30), k + 1, k + 1, rain=0.0,
+                               observed=START + k * timedelta(hours=1)))
+    out = e.tick(START + timedelta(seconds=100))
+    loc = out["locations"]["REF-CHE"]
+    assert loc["forecast"]["rain_mmph"] == 45.0
+    assert loc["assessment"]["developing"] is True
+    assert loc["assessment"]["category"] == "low"
+    assert out["incidents"] == []
+    [alert] = [a for a in out["prealerts"] if a["region"] == "CHE"]
+    assert alert["forecast_category"] in {"high", "critical"}
+    assert alert["actions"][0]["priority"] == "P3"
+    calls = stub.calls
+    e.tick(START + timedelta(seconds=110))          # no new reference data: no new prediction
+    assert stub.calls == calls
+
+
+def test_without_a_model_there_is_no_forecast():
+    e = Engine(NETWORK)
+    e.ingest_window(window("REF-CHE", START, 1, 1))
+    out = e.tick(START + timedelta(seconds=40))
+    assert out["locations"]["REF-CHE"]["forecast"] is None
+    assert out["prealerts"] == []
+
+
+def test_engine_runs_with_the_committed_models():
+    from pathlib import Path
+
+    from weatherops.forecast import Forecaster
+
+    artifacts = Path(__file__).resolve().parents[2] / "ml" / "artifacts"
+    fc = Forecaster.load(artifacts)
+    if fc is None:
+        pytest.skip("no trained models in ml/artifacts")
+    run = SimRun(Engine(NETWORK, forecaster=fc))
+    results = run.advance(8)
+    loc = results[-1]["locations"]["REF-CHE"]
+    assert loc["forecast"] is not None
+    assert set(loc["forecast"]) >= {"rain_mmph", "gust_kmph", "temperature_c", "visibility_m"}
+    assert loc["forecast"]["rain_mmph"] >= 0

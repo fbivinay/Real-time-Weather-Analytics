@@ -11,7 +11,7 @@ import statistics
 from collections import Counter, defaultdict, deque
 from datetime import timedelta
 
-from weatherops import actions, anomaly, impact, risk
+from weatherops import actions, anomaly, forecast, impact, risk
 from weatherops.incidents import IncidentManager
 from weatherops.schema import fmt_ts, parse_ts
 
@@ -69,6 +69,7 @@ class Engine:
         self._latency = deque(maxlen=600)
         self._suspect_since = {}
         self._forecasts = {}
+        self._forecast_origin = {}
         self._last_snapshot = None
         self.incidents.reset()
 
@@ -110,9 +111,31 @@ class Engine:
     def ingest_spark_counters(self, dropped_late, dropped_duplicates):
         self._spark = {"dropped_late": int(dropped_late or 0), "dropped_duplicates": int(dropped_duplicates or 0)}
 
-    def set_forecasts(self, forecasts):
-        """city_id -> predicted risk inputs at +60 min (from the forecaster)."""
-        self._forecasts = forecasts
+    def _update_forecasts(self, series):
+        """+60 min prediction per city, refreshed only when the city reference
+        has new data. Samples sit at each window's observed midpoint."""
+        if self.forecaster is None:
+            return
+        rows, current, cities = [], [], []
+        for ref in self.network.references:
+            windows = series.get(ref.id)
+            if not windows:
+                continue
+            samples = [(w["observed_from"] + (w["observed_to"] - w["observed_from"]) / 2, {
+                "temperature_c": w.get("temp_avg"), "humidity_pct": w.get("humidity_avg"),
+                "rain_mmph": w.get("rain_avg"), "wind_kmph": w.get("wind_avg"), "gust_kmph": w.get("gust_max"),
+                "visibility_m": w.get("visibility_min"), "pressure_hpa": w.get("pressure_avg")}) for w in windows]
+            samples.sort(key=lambda s: s[0])
+            origin = samples[-1][0]
+            if self._forecast_origin.get(ref.city_id) == origin:
+                continue
+            self._forecast_origin[ref.city_id] = origin
+            rows.append(forecast.features_at(samples, origin, ref.lat, ref.lon))
+            current.append(samples[-1][1])
+            cities.append(ref.city_id)
+        if rows:
+            for city_id, ahead in zip(cities, self.forecaster.predict(rows, current)):
+                self._forecasts[city_id] = {k: (None if v is None else round(v, 1)) for k, v in ahead.items()}
 
     # ---- tick -----------------------------------------------------------
 
@@ -158,7 +181,8 @@ class Engine:
         self._pending_latency = []
         if self.observed_at is None:
             return {"mode": None, "locations": {}, "routes": {}, "hubs": {}, "kpis": json.loads(json.dumps(EMPTY_KPIS)),
-                    "events": [], "incidents": [], "dq": self._dq({}, now), "health": self._health({}, now),
+                    "events": [], "incidents": [], "prealerts": [], "dq": self._dq({}, now),
+                    "health": self._health({}, now),
                     "snapshot": None}
 
         observed = self.observed_at
@@ -170,6 +194,8 @@ class Engine:
             group = {s.id: series[s.id] for s in sensors if s.id in series}
             if group:
                 verdicts.update(anomaly.verdicts(group, now))
+
+        self._update_forecasts(series)
 
         rain_24h = {}
         for ref in self.network.references:
@@ -215,7 +241,7 @@ class Engine:
         by_region = defaultdict(list)
         for sid in scores:
             by_region[self.network.stations[sid].city_id].append(sid)
-        regions = {}
+        regions, prealerts = {}, []
         for city_id, sids in by_region.items():
             city = self.network.cities[city_id]
             worst = assessments[max(sids, key=lambda s: scores[s])]
@@ -239,6 +265,15 @@ class Engine:
                 "hubs": [h["id"] for h in hubs], "deliveries_at_risk": impact_slice["deliveries_at_risk"],
                 "actions": actions.recommend(city_id, city.name, worst, impact_slice, self.network),
             }
+            if risk.RANK[worst["category"]] < risk.RANK["high"]:
+                ahead = max(sids, key=lambda s: assessments[s].get("forecast_score") or -1)
+                a = assessments[ahead]
+                if a["developing"] and risk.RANK[a["forecast_category"]] >= risk.RANK["high"]:
+                    prealerts.append({
+                        "region": city_id, "region_name": city.name, "hazard": a["hazard"],
+                        "forecast_category": a["forecast_category"], "forecast_score": a["forecast_score"],
+                        "actions": actions.recommend(city_id, city.name, a, {"routes": [], "hubs": []}, self.network),
+                    })
         events = self.incidents.update(regions, observed)
         active = self.incidents.active()
 
@@ -262,7 +297,7 @@ class Engine:
 
         self._fresh.clear()
         return {"mode": mode, "locations": locations, "routes": out["routes"], "hubs": out["hubs"], "kpis": kpis,
-                "events": events, "incidents": active, "dq": self._dq(verdicts, now),
+                "events": events, "incidents": active, "prealerts": prealerts, "dq": self._dq(verdicts, now),
                 "health": self._health(series, now), "snapshot": snapshot}
 
 
@@ -297,7 +332,14 @@ def main():
     # run left so the dashboard never mixes the two.
     r.delete(*HASHES.values(), "incidents:active")
 
-    engine = Engine(NETWORK, climatology=risk.load_climatology())
+    forecaster = forecast.Forecaster.load(os.environ.get("MODELS_DIR", "/app/models"))
+    if forecaster:
+        r.set("state:model", json.dumps(forecaster.card))
+        log.info("forecast model %s loaded: %s", forecaster.card.get("version"), sorted(forecaster.boosters))
+    else:
+        r.delete("state:model")
+        log.info("no forecast model; running without +60 min forecasts")
+    engine = Engine(NETWORK, climatology=risk.load_climatology(), forecaster=forecaster)
     consumer = KafkaConsumer("weather-features", "weather-quarantine", bootstrap_servers=bootstrap,
                              group_id="risk-engine", auto_offset_reset="latest",
                              value_deserializer=lambda v: json.loads(v.decode("utf-8")))

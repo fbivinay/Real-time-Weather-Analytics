@@ -24,6 +24,7 @@ def populated():
     r.hset("incidents:active", mapping={"INC-1": json.dumps({"id": "INC-1", "region": "CHE"})})
     r.zadd("incidents:history", {json.dumps({"id": "OLD-1"}): 100.0, json.dumps({"id": "OLD-2"}): 200.0})
     r.set("dq:summary", json.dumps({"suspect": []}))
+    r.set("state:prealerts", json.dumps([{"region": "VJA", "forecast_category": "high"}]))
     r.set("health:engine", json.dumps({"tick_at": now_iso(5), "latency_p50_s": 47.5, "freshness_s": {"sensor": 40}}))
     r.set("health:spark:features-kafka", json.dumps({"name": "features-kafka", "at": now_iso(3)}))
     r.lpush("series:REF-CHE", json.dumps({"t": "a", "score": 70}), json.dumps({"t": "b", "score": 73}))
@@ -121,3 +122,10 @@ def test_snapshot_includes_engine_health_so_metrics_show_on_load():
     with client(populated()) as c:
         snap = c.get("/api/snapshot").json()
     assert snap["engine"]["latency_p50_s"] == 47.5
+
+
+def test_snapshot_carries_prealerts():
+    with client(populated()) as c:
+        assert c.get("/api/snapshot").json()["prealerts"][0]["region"] == "VJA"
+    with client(FakeRedis()) as c:
+        assert c.get("/api/snapshot").json()["prealerts"] == []

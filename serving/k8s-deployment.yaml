@@ -1,7 +1,8 @@
 # Engine and API ship as ConfigMaps built from the real source files (see
 # deploy.sh): weatherops-lib is the shared package, serving-code this
-# directory, engine-models the trained forecast models (optional). Both run
-# on the stock python image and pip-install their dependencies at start.
+# directory. The trained forecast models (too big for a ConfigMap) are copied
+# to the node and mounted from there; without them the engine runs with no
+# forecasts. Both run on the stock python image and pip-install at start.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,9 +69,9 @@ spec:
           configMap:
             name: serving-code
         - name: models
-          configMap:
-            name: engine-models
-            optional: true
+          hostPath:
+            path: /home/ubuntu/weatherops-models
+            type: DirectoryOrCreate
 ---
 apiVersion: apps/v1
 kind: Deployment

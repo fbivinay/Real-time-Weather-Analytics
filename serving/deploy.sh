@@ -9,8 +9,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/infra/lib.sh" "$@"
 echo "== Node $NODE_IP: engine + API =="
 push_configmap weatherops-lib weatherops
 push_configmap serving-code serving
-if [ -d "$REPO_ROOT/ml/artifacts" ]; then
-  push_configmap engine-models ml/artifacts
+# Trained models are 1-2 MB each, over the 1 MiB ConfigMap limit; on a
+# single-node cluster a hostPath directory is the simple, safe channel.
+if [ -f "$REPO_ROOT/ml/artifacts/model_card.json" ]; then
+  tar -C "$REPO_ROOT/ml/artifacts" -cf - .     | "${SSH[@]}" "rm -rf ~/weatherops-models && mkdir -p ~/weatherops-models && tar -C ~/weatherops-models -xf -"
 fi
 
 # The pre-WeatherOps consumer and its ConfigMap.

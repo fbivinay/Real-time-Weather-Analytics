@@ -385,8 +385,11 @@ median of its trusted sensors, falling back to the city reference.
 - Historical conditions: ×1.15 when the dominant factor's input exceeds the
   city's p95 for the month (`climatology.json`); ×1.0 when climatology is
   absent.
-- Forecast: `H = max(H, 0.8 × H_forecast_60min)`; `developing = true` when
-  the forecast category is above the current one.
+- Forecast: the +60 min prediction never raises the observed score
+  (incidents follow what is happening, not model error); `developing = true`
+  when the forecast category is above the current one, which raises a P3
+  pre-alert for regions still below High (shown as "Developing in the next
+  hour").
 - Score = round(100 × min(H, 1)). Low <25 ≤ Medium <50 ≤ High <75 ≤
   Critical.
 - The dominant factor names the hazard (`rain`, `wind`, `heat`, `fog`).

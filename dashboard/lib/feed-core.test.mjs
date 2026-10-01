@@ -105,3 +105,10 @@ test("a tick's partial location keeps the static fields from the snapshot", () =
   assert.equal(s.locations["REF-CHE"].lat, 13.08);
   assert.equal(s.locations["REF-CHE"].name, "Chennai");
 });
+
+test("pre-alerts arrive with snapshots and ticks", () => {
+  let s = reduce(initialState(), { ...snapshot, prealerts: [{ region: "VJA" }] });
+  assert.equal(s.prealerts[0].region, "VJA");
+  s = reduce(s, { type: "tick", prealerts: [] });
+  assert.deepEqual(s.prealerts, []);
+});

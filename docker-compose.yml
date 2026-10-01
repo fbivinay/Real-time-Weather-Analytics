@@ -91,6 +91,9 @@ services:
 
   engine:
     <<: *python
+    environment:
+      <<: *pyenv
+      MODELS_DIR: /repo/ml/artifacts
     command:
       - sh
       - -c
