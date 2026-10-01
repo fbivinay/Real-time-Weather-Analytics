@@ -11,19 +11,24 @@ S3_BUCKET="$("${TF[@]}" output -raw s3_bucket_name)"
 echo "== Node $NODE_IP, bucket $S3_BUCKET: processor =="
 
 echo "== AWS credentials Secret =="
-# The secret reaches kubectl on stdin, never in argv: --from-file=<key>=
-# /dev/stdin keeps it out of the local process list, and piping the rendered
-# manifest over SSH keeps it out of the remote one. Both halves matter -
-# argv is world-readable via `ps` on a shared machine.
-ACCESS_KEY_ID="$("${TF[@]}" output -raw databricks_s3_access_key_id)"
-{
-  printf '%s' "$("${TF[@]}" output -raw databricks_s3_secret_key)" \
-    | kubectl create secret generic aws-s3-creds \
-        --namespace "$NAMESPACE" \
-        --from-literal=access-key-id="$ACCESS_KEY_ID" \
-        --from-file=secret-access-key=/dev/stdin \
-        --dry-run=client -o yaml
-} | "${SSH[@]}" "$KUBECTL apply -f -"
+# The secret never appears in any process's argv (world-readable via `ps`):
+# terraform writes it to a pipe, base64 reads the pipe, and the manifest
+# reaches the node's kubectl on SSH stdin. Built by hand rather than with
+# `kubectl create --from-file=/dev/stdin`, which Windows kubectl cannot read.
+ACCESS_KEY_B64="$("${TF[@]}" output -raw databricks_s3_access_key_id | base64 | tr -d '\n')"
+SECRET_KEY_B64="$("${TF[@]}" output -raw databricks_s3_secret_key | base64 | tr -d '\n')"
+"${SSH[@]}" "$KUBECTL apply -f -" <<MANIFEST
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-s3-creds
+  namespace: $NAMESPACE
+type: Opaque
+data:
+  access-key-id: $ACCESS_KEY_B64
+  secret-access-key: $SECRET_KEY_B64
+MANIFEST
+unset ACCESS_KEY_B64 SECRET_KEY_B64
 
 echo "== Source ConfigMaps =="
 push_configmap weatherops-lib weatherops
