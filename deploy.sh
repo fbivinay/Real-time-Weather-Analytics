@@ -12,6 +12,7 @@
 #   ./deploy.sh --destroy             remove everything (S3 must be emptied first)
 #
 # WEATHEROPS_HOST=<name>.duckdns.org enables the TLS ingress the dashboard uses.
+# TF_AUTO_APPROVE=1 skips Terraform's confirmation prompt (unattended runs).
 # Every step is idempotent: re-running after a failure resumes.
 set -euo pipefail
 
@@ -22,6 +23,7 @@ TLS_BACKUP="$HOME/.weatherops/tls-secret.json"
 
 # A function, not a string: the repo path contains spaces.
 tf() { terraform -chdir="$REPO_ROOT/infra" "$@"; }
+tf_apply() { tf apply ${TF_AUTO_APPROVE:+-auto-approve} "$@"; }
 say() { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 node_ip() { tf output -raw public_ip; }
 ssh_node() { ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@$(node_ip)" "$@"; }
@@ -92,15 +94,24 @@ topics() {
 bring_up() {
   say "1/5  Node (Terraform)"
   # Review before applying: an AMI or user-data change replaces the node.
-  tf apply -var node_enabled=true
+  tf_apply -var node_enabled=true
   local ip
   ip="$(node_ip)"
   echo "Node: $ip"
 
   say "2/5  Waiting for k3s"
-  until ssh_node 'test -f /home/ubuntu/user-data-complete' 2>/dev/null; do
-    echo "  ...still installing"
-    sleep 15
+  # A node rebuilt behind the same Elastic IP has a new host key, which
+  # accept-new rightly refuses. Forget the old key only on that exact
+  # mismatch - right after Terraform recreated the node - never blindly.
+  local out
+  until out=$(ssh_node 'test -f /home/ubuntu/user-data-complete && echo ready' 2>&1) && [ "$out" = ready ]; do
+    if grep -q "HOST IDENTIFICATION HAS CHANGED" <<<"$out"; then
+      echo "  node was rebuilt: replacing its old SSH host key"
+      ssh-keygen -R "$ip" >/dev/null 2>&1
+    else
+      echo "  ...still installing"
+      sleep 15
+    fi
   done
 
   say "3/5  Kafka, Redis, cert-manager"
@@ -166,7 +177,7 @@ down() {
   say "Saving TLS certificate"
   backup_tls || true
   say "Destroying the node (Elastic IP, S3 and IAM stay)"
-  tf apply -var node_enabled=false
+  tf_apply -var node_enabled=false
 }
 
 destroy() {
