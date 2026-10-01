@@ -50,6 +50,12 @@ helm upgrade --install redis bitnami/redis \
   --set auth.existingSecretPasswordKey=redis-password \
   --wait --timeout 10m
 
+echo "== Installing cert-manager =="
+helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+helm repo update >/dev/null
+helm upgrade --install cert-manager jetstack/cert-manager   --namespace cert-manager --create-namespace   --version v1.18.2   --set crds.enabled=true   --wait --timeout 10m
+kubectl apply -f "$CHART_DIR/../k8s/cluster-issuer.yaml"
+
 echo "== Pod status =="
 kubectl get pods -n "$NAMESPACE"
 
