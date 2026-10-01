@@ -413,9 +413,13 @@ median of its trusted sensors, falling back to the city reference.
   suggested when every corridor on the path is below High and the detour is
   at most 2× the direct corridor.
 
-**Incidents** (`incidents.py`): key = (city region, hazard). A region is a
-reference city with its hubs, sensors and last-mile routes; a linehaul route
-belongs to the region nearest its highest-risk point.
+**Incidents** (`incidents.py`): one incident per city region at a time,
+driven by the region's combined score; its hazard is the region's current
+dominant factor and may change during the incident (the timeline records
+it). Keying by (region, hazard) would split a cyclone's rain and wind into
+two High incidents while the map shows Critical. A region is a reference
+city with its hubs, sensors and last-mile routes; a linehaul route belongs
+to the region nearest its highest-risk point.
 
 - Open when region category ≥ High on 2 consecutive engine ticks that saw
   fresh data for the region (debounces a single noisy window in any mode).
