@@ -25,7 +25,11 @@ export function seconds(value) {
 }
 
 export const SCENARIO_NAMES = {
+  "montha-2025": "Cyclone Montha, Oct 2025",
   "michaung-2023": "Cyclone Michaung, Dec 2023",
+  "fog-north-2025": "Dense fog, north India, Dec 2025",
+  "heatwave-2024": "Heatwave, May 2024",
+  "gujarat-rain-2024": "Extreme rain, Gujarat, Aug 2024",
   "storm-chennai": "Severe thunderstorm, Chennai",
   "monsoon-mumbai": "Monsoon bands, Mumbai",
   "fog-north": "Dense fog, Delhi NCR",
