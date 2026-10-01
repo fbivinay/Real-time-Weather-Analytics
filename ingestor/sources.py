@@ -174,10 +174,10 @@ class SimSource:
         return c
 
 
-def make_source(mode, scenario, network, speed=None, **fetchers):
+def make_source(mode, scenario, network, speed=None, poll_minutes=15, **fetchers):
     if mode == "live":
         kwargs = {"fetch_current": fetchers["fetch_current"]} if "fetch_current" in fetchers else {}
-        return LiveSource(network, **kwargs)
+        return LiveSource(network, poll_minutes=poll_minutes, **kwargs)
     if mode == "replay":
         if scenario not in events.EVENTS:
             raise ValueError(f"unknown replay event {scenario!r}; choose from {sorted(events.EVENTS)}")
