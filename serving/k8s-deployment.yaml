@@ -142,11 +142,12 @@ metadata:
   name: weather-api
   namespace: weather-pipeline
 spec:
-  type: NodePort
+  # Reached through the Traefik ingress (serving/ingress.yaml), or an SSH
+  # tunnel (./deploy.sh --tunnel) before a DuckDNS name exists.
+  type: ClusterIP
   selector:
     app: weather-api
   ports:
     - name: http
       port: 8000
       targetPort: http
-      nodePort: 30080
