@@ -13,6 +13,9 @@ CHANNEL = "weatherops:events"
 HISTORY_DAYS = 7
 SERIES_POINTS = 120   # per-station sparkline for the station detail view
 HASHES = {"locations": "state:locations", "routes": "state:routes", "hubs": "state:hubs"}
+# What changes tick to tick for a station already known to clients; names,
+# kinds and coordinates go out once, with the station's first appearance.
+DYNAMIC_LOCATION_FIELDS = ("assessment", "values", "verdict", "observed_at", "forecast")
 
 
 def _dumps(obj):
@@ -22,7 +25,10 @@ def _dumps(obj):
 def write_tick(r, result, previous, now):
     """Write one tick; returns the state to pass as `previous` next time."""
     mode = _dumps(result["mode"])
-    mode_changed = previous.get("mode") not in (None, mode)
+    # Identity is the data source, not the weather clock: observed_at and
+    # speed move every tick and must not wipe the state.
+    source = _dumps([(result["mode"] or {}).get("source"), (result["mode"] or {}).get("scenario")])
+    mode_changed = previous.get("source") not in (None, source)
     pipe = r.pipeline(transaction=False)
     if mode_changed:
         pipe.delete(*HASHES.values(), "incidents:active")
@@ -30,7 +36,7 @@ def write_tick(r, result, previous, now):
         pipe.publish(CHANNEL, _dumps({"type": "mode", "mode": result["mode"]}))
     pipe.set("state:mode", mode)
 
-    nxt, deltas = {"mode": mode}, {}
+    nxt, deltas = {"source": source}, {}
     for name, key in HASHES.items():
         old = previous.get(name, {})
         cur = {k: _dumps(v) for k, v in result[name].items()}
@@ -42,6 +48,9 @@ def write_tick(r, result, previous, now):
             pipe.hdel(key, *removed)
         nxt[name] = cur
         deltas[name] = {k: result[name][k] for k in changed}
+        if name == "locations":
+            deltas[name] = {k: v if k not in old else {f: v.get(f) for f in DYNAMIC_LOCATION_FIELDS}
+                            for k, v in deltas[name].items()}
 
     for sid in deltas["locations"]:
         loc = result["locations"][sid]

@@ -24,6 +24,9 @@ RULES = (
     ("heat-slots", ("heat",), "high", "lastmile", "last-mile ops",
      "Shift delivery slots to before 11:00 / after 16:00 in {region}; check cold-chain loads"),
 )
+# A hazard whose own sub-score reaches this level gets its actions even when
+# another hazard dominates: a cyclone needs both rain and wind responses.
+SIGNIFICANT = 0.5
 PRE_ALERT = ("Pre-alert: {hazard} expected in {region} within 60 min; stage drivers, hold new dispatch")
 
 
@@ -51,15 +54,17 @@ def _alt_hub(network, hub_id, hub_status):
 
 def recommend(region_id, region_name, assessment, impact_slice, network):
     hazard, cat = assessment.get("hazard"), assessment["category"]
+    active = {h for h, score in (assessment.get("factors") or {}).items() if score >= SIGNIFICANT}
+    active |= {hazard} - {None}
     out = []
-    if hazard and RANK[cat] >= RANK["high"]:
+    if active and RANK[cat] >= RANK["high"]:
         priority = "P1" if cat == "critical" else "P2"
         because = _because(assessment)
         routes = impact_slice.get("routes", [])
         by_kind = {"lastmile": [r for r in routes if r["kind"] == "lastmile"],
                    "linehaul": [r for r in routes if r["kind"] == "linehaul"]}
         for key, hazards, minimum, kind, owner, template in RULES:
-            if hazard not in hazards or RANK[cat] < RANK[minimum]:
+            if not active & set(hazards) or RANK[cat] < RANK[minimum]:
                 continue
 
             def action(suffix, text, assets):

@@ -1,229 +1,159 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-const REFRESH_MS = 5000;
+import HealthPanel from "../components/HealthPanel";
+import IncidentFeed from "../components/IncidentFeed";
+import KpiStrip from "../components/KpiStrip";
+import LocationPanel from "../components/LocationPanel";
+import ModeBadge from "../components/ModeBadge";
+import OpsMap from "../components/OpsMap";
+import { CATEGORY_LABEL, HAZARD_LABEL, categoryOf } from "../lib/categories";
+import { scenarioName } from "../lib/format";
+import { useFeed } from "../lib/feed";
 
-// Fixed scale rather than one derived from the current readings: it keeps the
-// five range bars comparable with each other and stops the axis jumping on
-// every poll. 10-50C covers the generator's normal band (15-35) and its
-// extreme heat band (40-45) with room to spare.
-const TEMP_MIN = 10;
-const TEMP_MAX = 50;
+const HISTORY_POINTS = 120;
 
-const ALERT_LABEL = {
-  heat: { text: "Heat", cls: "chip-heat" },
-  heavy_rain: { text: "Heavy rain", cls: "chip-rain" },
-  high_wind: { text: "High wind", cls: "chip-wind" },
-};
-
-const UNIT = { temperature: "°C", rainfall: "mm", wind_speed: "km/h", humidity: "%" };
-
-function pct(value) {
-  const clamped = Math.max(TEMP_MIN, Math.min(TEMP_MAX, value));
-  return ((clamped - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 100;
+function Legend() {
+  return (
+    <div className="map-legend" aria-hidden="true">
+      {["critical", "high", "medium", "low"].map((c) => (
+        <span className="legend-row" key={c}>
+          <i className="swatch" style={{ background: `var(--risk-${c})` }} />
+          {CATEGORY_LABEL[c]}
+        </span>
+      ))}
+      <span className="legend-row"><i className="swatch-line" style={{ background: "var(--risk-high)" }} />Affected route</span>
+      <span className="legend-row"><i className="swatch-square" />Logistics hub</span>
+      <span className="legend-row"><i className="swatch-ring" />Suspect sensor (excluded)</span>
+    </div>
+  );
 }
 
-function one(value) {
-  return Number(value).toFixed(1);
-}
-
-function clockTime(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-async function load(resource) {
-  const res = await fetch(`/api/proxy?resource=${resource}`, { cache: "no-store" });
-  if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
-  return res.json();
+function TopLocations({ ranked, onSelect }) {
+  return (
+    <section className="card" aria-labelledby="top-title">
+      <div className="card-head">
+        <h2 id="top-title">Highest-risk locations</h2>
+        <span className="hint">Table view of the map · select a row for detail</span>
+      </div>
+      {ranked.length === 0 ? (
+        <div className="empty">Waiting for the first feature windows (about a minute after the pipeline starts).</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr><th>Location</th><th>Risk</th><th>Score</th><th>Hazard</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              {ranked.map((l) => (
+                <tr key={l.station_id}>
+                  <td>
+                    <button type="button" className="linklike" onClick={() => onSelect(l.station_id)}>
+                      {l.name || l.station_id}
+                    </button>
+                  </td>
+                  <td><span className={`chip chip-${categoryOf(l)}`}>{CATEGORY_LABEL[categoryOf(l)]}</span></td>
+                  <td className="mono">{l.assessment.score}</td>
+                  <td>{HAZARD_LABEL[l.assessment.hazard] ?? "—"}</td>
+                  <td className="muted">{l.kind === "reference" ? "City reference" : "Hub sensor"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 export default function Page() {
-  const [stations, setStations] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [error, setError] = useState(null);
-  const [updatedAt, setUpdatedAt] = useState(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      const [s, a, st] = await Promise.all([
-        load("stations"),
-        load("alerts"),
-        load("stats"),
-      ]);
-      setStations(s.stations || []);
-      setAlerts(a.alerts || []);
-      setStats(st);
-      setError(null);
-      setUpdatedAt(new Date());
-    } catch (err) {
-      setError(err.message);
-    }
-  }, []);
+  const { state, connection, recording } = useFeed();
+  const [selected, setSelected] = useState(null);
+  const history = useRef({});
 
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(id);
-  }, [refresh]);
+    history.current = {};
+    setSelected(null);
+  }, [state.mode?.source, state.mode?.scenario]);
 
-  const live = !error;
+  useEffect(() => {
+    for (const [sid, loc] of Object.entries(state.locations)) {
+      const points = (history.current[sid] ??= []);
+      const last = points[points.length - 1];
+      if (!last || last.t !== loc.observed_at) {
+        points.push({ t: loc.observed_at, score: loc.assessment?.score ?? null });
+        if (points.length > HISTORY_POINTS) points.shift();
+      }
+    }
+  }, [state.locations]);
+
+  const ranked = useMemo(
+    () => Object.values(state.locations).filter((l) => l.assessment).sort((a, b) => b.assessment.score - a.assessment.score),
+    [state.locations],
+  );
+  const focus = state.locations[selected] ?? ranked[0] ?? null;
 
   return (
     <div className="wrap">
       <header className="top">
         <div>
-          <p className="eyebrow">Real-time weather analytics</p>
-          <h1>Station Monitor</h1>
+          <p className="eyebrow">WeatherOps · weather risk and operations intelligence</p>
+          <h1>Where weather will hit operations next</h1>
+          <p className="lede">
+            Risk for 40 Indian cities and 25 logistics hubs, mapped onto linehaul corridors, last-mile routes
+            and live deliveries, with recommended actions for dispatch, fleet and warehouse teams.
+          </p>
         </div>
-        <span className={`status ${live ? "status-live" : "status-down"}`}>
-          <i className="dot" />
-          {live ? `Live · updated ${clockTime(updatedAt?.toISOString())}` : "Cluster unreachable"}
-        </span>
+        <ModeBadge mode={state.mode} connection={connection} />
       </header>
 
-      {error && (
+      {connection === "recording" && (
         <div className="banner">
-          <strong>No data from the cluster</strong>
-          <p>
-            {error}. The pipeline runs on a single EC2 node that is torn down between
-            sessions — if it has been destroyed, this page stays up and empty rather than
-            breaking.
-          </p>
+          <strong>Showing a recording.</strong> The cluster runs on demand to keep costs near zero; this is a
+          captured run of <em>{scenarioName(recording)}</em> through the full pipeline (Kafka, Spark, risk engine).
+        </div>
+      )}
+      {connection === "offline" && (
+        <div className="banner">
+          <strong>Cluster unreachable and no recording available.</strong> Start it with <span className="mono">./deploy.sh</span>.
         </div>
       )}
 
-      <div className="tiles">
-        <div className="tile">
-          <span className="label">Records processed</span>
-          <span className="value">{stats ? stats.records_processed.toLocaleString() : "—"}</span>
-          <span className="sub">alerts + aggregates into Redis</span>
-        </div>
-        <div className="tile">
-          <span className="label">Stations reporting</span>
-          <span className="value">{stats ? stats.stations_tracked : "—"}</span>
-          <span className="sub">one reading each per 5 seconds</span>
-        </div>
-        <div className="tile">
-          <span className="label">Alerts buffered</span>
-          <span className="value">{stats ? stats.alerts_buffered : "—"}</span>
-          <span className="sub">most recent 50 kept</span>
-        </div>
-        <div className="tile">
-          <span className="label">Window</span>
-          <span className="value">1<span style={{ fontSize: "1rem", marginLeft: ".2rem" }}>min</span></span>
-          <span className="sub">tumbling, per station</span>
-        </div>
+      <KpiStrip kpis={state.kpis} />
+
+      <div className="grid-main">
+        <section className="card map-card" aria-labelledby="map-title">
+          <div className="card-head">
+            <h2 id="map-title">Risk map</h2>
+            <span className="hint">Stations sized and coloured by risk · routes coloured when Medium or above</span>
+          </div>
+          <div style={{ position: "relative" }}>
+            <OpsMap
+              locations={state.locations}
+              routes={state.routes}
+              incidents={state.incidents}
+              selected={focus?.station_id}
+              onSelect={setSelected}
+            />
+            <Legend />
+          </div>
+        </section>
+        <IncidentFeed incidents={state.incidents} lastEvent={state.lastEvent} onSelectRegion={(city) => setSelected(`REF-${city}`)} />
       </div>
 
-      <section>
-        <div className="sec-head">
-          <h2>Stations</h2>
-          <span className="hint">Latest closed one-minute window · bar spans that window&apos;s low to high, dot is the average</span>
-        </div>
-        {stations.length === 0 ? (
-          <div className="empty">
-            Waiting for the first window to close. Aggregates appear about a minute after the
-            processor starts.
-          </div>
-        ) : (
-          <div className="stations">
-            {stations.map((s) => (
-              <article className="station" key={s.station_id}>
-                <div className="station-head">
-                  <h3>{s.city}</h3>
-                  <span className="id">{s.station_id}</span>
-                </div>
+      <div className="grid-lower">
+        <LocationPanel location={focus} history={focus ? history.current[focus.station_id] : null} />
+        <HealthPanel health={state.health} engine={state.engine} dq={state.dq} connection={connection} />
+      </div>
 
-                <div className="temp-now">
-                  {one(s.avg_temperature)}
-                  <span className="deg">°C avg</span>
-                </div>
-
-                <div className="range">
-                  <div className="range-track">
-                    <div
-                      className="range-fill"
-                      style={{
-                        left: `${pct(s.min_temperature)}%`,
-                        width: `${Math.max(pct(s.max_temperature) - pct(s.min_temperature), 1.5)}%`,
-                      }}
-                    />
-                    <div className="range-dot" style={{ left: `${pct(s.avg_temperature)}%` }} />
-                  </div>
-                  <div className="range-scale">
-                    <span>{one(s.min_temperature)}°</span>
-                    <span>{one(s.max_temperature)}°</span>
-                  </div>
-                </div>
-
-{/* Units live in the labels so the values stay bare numbers and line up
-    on their tabular figures - a unit suffixed to one value and not
-    another is what made wind look unlabelled. */}
-                <div className="metrics">
-                  <div className="metric">
-                    <span className="m-label">Humidity %</span>
-                    <span className="m-value">{Math.round(s.avg_humidity)}</span>
-                  </div>
-                  <div className="metric">
-                    <span className="m-label">Rain mm</span>
-                    <span className="m-value">{one(s.avg_rainfall)}</span>
-                  </div>
-                  <div className="metric">
-                    <span className="m-label">Wind km/h</span>
-                    <span className="m-value">{one(s.avg_wind_speed)}</span>
-                  </div>
-                </div>
-
-                <div className="window">
-                  {clockTime(s.window_start)}–{clockTime(s.window_end)} · {s.reading_count} readings
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <div className="sec-head">
-          <h2>Recent alerts</h2>
-          <span className="hint">Fired when a reading crosses 40°C, 50mm or 60km/h</span>
-        </div>
-        {alerts.length === 0 ? (
-          <div className="empty">
-            No alerts yet. Extreme readings are injected at roughly a 1-in-30 chance per station
-            per cycle, so expect one every minute or two.
-          </div>
-        ) : (
-          <div className="alerts">
-            {alerts.map((a, i) => {
-              const meta = ALERT_LABEL[a.alert_type] || { text: a.alert_type, cls: "chip-heat" };
-              return (
-                <div className="alert" key={`${a.timestamp}-${a.station_id}-${i}`}>
-                  <span className={`chip ${meta.cls}`}>{meta.text}</span>
-                  <span className="where">
-                    {a.city}
-                    <span>
-                      {a.station_id} · {clockTime(a.timestamp)}
-                    </span>
-                  </span>
-                  <span className="reading">
-                    {one(a.value)}
-                    {UNIT[a.field] || ""}
-                    <span className="thr"> / {a.threshold}</span>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <TopLocations ranked={ranked.slice(0, 10)} onSelect={setSelected} />
 
       <footer>
-        <span>Kafka → Spark Structured Streaming → Redis → FastAPI</span>
-        <span>Refreshes every {REFRESH_MS / 1000}s</span>
+        <span>Kafka → Spark Structured Streaming → risk engine → Redis → FastAPI WebSocket</span>
+        <span>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0)</span>
+        <span>Basemap: Natural Earth</span>
+        <span>Hub sensors and the logistics network are simulated</span>
         <span className="mono">github.com/fbivinay/Real-time-Weather-Analytics</span>
       </footer>
     </div>

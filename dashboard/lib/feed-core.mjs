@@ -23,7 +23,10 @@ export function initialState() {
 }
 
 function merge(current, changed = {}, removed = []) {
-  const next = { ...current, ...changed };
+  const next = { ...current };
+  // Shallow-merge each entry: ticks send only the fields that change for
+  // entries the client already holds (names and coordinates arrive once).
+  for (const [key, value] of Object.entries(changed)) next[key] = { ...current[key], ...value };
   for (const key of removed) delete next[key];
   return next;
 }
@@ -41,6 +44,7 @@ export function reduce(state, msg) {
         incidents: msg.incidents ?? [],
         dq: msg.dq ?? null,
         health: msg.health ?? null,
+        engine: msg.engine ?? null,
         updatedAt: Date.now(),
       };
     case "tick":

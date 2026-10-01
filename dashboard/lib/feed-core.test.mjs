@@ -16,7 +16,8 @@ const snapshot = {
 };
 
 test("snapshot replaces the whole state", () => {
-  const s = reduce({ ...initialState(), locations: { OLD: {} } }, snapshot);
+  const s = reduce({ ...initialState(), locations: { OLD: {} } }, { ...snapshot, engine: { latency_p50_s: 47 } });
+  assert.equal(s.engine.latency_p50_s, 47);
   assert.deepEqual(Object.keys(s.locations), ["REF-CHE"]);
   assert.equal(s.mode.scenario, "storm-chennai");
   assert.equal(s.health.status, "ok");
@@ -92,4 +93,15 @@ test("recording player replays frames on their offsets and loops", () => {
   } finally {
     mock.timers.reset();
   }
+});
+
+test("a tick's partial location keeps the static fields from the snapshot", () => {
+  let s = reduce(initialState(), {
+    ...snapshot,
+    locations: { "REF-CHE": { station_id: "REF-CHE", name: "Chennai", lat: 13.08, lon: 80.27, assessment: { score: 10 } } },
+  });
+  s = reduce(s, { type: "tick", locations: { "REF-CHE": { assessment: { score: 60 } } } });
+  assert.equal(s.locations["REF-CHE"].assessment.score, 60);
+  assert.equal(s.locations["REF-CHE"].lat, 13.08);
+  assert.equal(s.locations["REF-CHE"].name, "Chennai");
 });
