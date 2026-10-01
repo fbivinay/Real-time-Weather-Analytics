@@ -77,6 +77,7 @@ def features(valid_df, window="30 seconds", watermark="15 seconds", delayed_s=10
             F.max("delay_s").alias("max_delay_s"),
             F.min("observed_at").alias("observed_from"),
             F.max("observed_at").alias("observed_to"),
+            F.max("event_time").alias("last_event_at"),
             F.min("temperature_c").alias("temp_min"),
             F.avg("temperature_c").alias("temp_avg"),
             F.max("temperature_c").alias("temp_max"),
@@ -93,7 +94,7 @@ def features(valid_df, window="30 seconds", watermark="15 seconds", delayed_s=10
             "station_id", "kind", "source", "scenario",
             F.col("window.start").alias("window_start"),
             F.col("window.end").alias("window_end"),
-            "observed_from", "observed_to", "readings", "seq_min", "seq_max", "delayed", "max_delay_s",
+            "observed_from", "observed_to", "last_event_at", "readings", "seq_min", "seq_max", "delayed", "max_delay_s",
             "temp_min", "temp_avg", "temp_max", "humidity_avg", "rain_avg", "rain_max", "wind_avg",
             "gust_max", "visibility_min", "pressure_avg", "rain_24h",
         )

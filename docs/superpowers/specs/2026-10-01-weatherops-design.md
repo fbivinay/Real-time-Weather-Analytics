@@ -176,7 +176,7 @@ One record per station per closed 30-second event-time window:
 
 ```
 station_id, kind, source, scenario,
-window_start, window_end, observed_from, observed_to,
+window_start, window_end, observed_from, observed_to, last_event_at,
 readings, seq_min, seq_max, delayed, max_delay_s,
 temp_min, temp_avg, temp_max, humidity_avg,
 rain_avg, rain_max, wind_avg, gust_max,

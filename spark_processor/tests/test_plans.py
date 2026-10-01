@@ -103,6 +103,7 @@ def test_window_aggregates_one_station(spark):
     assert (w.temp_min, w.temp_max) == (26.0, 28.0)
     assert w.window_start == datetime(2026, 1, 15, 10, 15, 30)
     assert w.delayed == 0
+    assert w.last_event_at == datetime(2026, 1, 15, 10, 15, 51)
 
 
 def test_duplicates_collapse(spark):
@@ -121,7 +122,7 @@ def test_feature_json_has_the_contract_fields(spark):
     row = plans.features(valid(spark, [r()])).toJSON().first()
     keys = set(json.loads(row))
     assert {"station_id", "kind", "source", "scenario", "window_start", "window_end", "observed_from",
-            "observed_to", "readings", "seq_min", "seq_max", "delayed", "max_delay_s", "temp_min", "temp_avg",
+            "observed_to", "last_event_at", "readings", "seq_min", "seq_max", "delayed", "max_delay_s", "temp_min", "temp_avg",
             "temp_max", "humidity_avg", "rain_avg", "rain_max", "wind_avg", "gust_max", "visibility_min",
             "pressure_avg"} <= keys
 
