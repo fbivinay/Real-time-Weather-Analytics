@@ -88,3 +88,13 @@ services:
         exec /opt/spark/bin/spark-submit --master "local[*]" --driver-memory 1g
         --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3
         --conf spark.jars.ivy=/tmp/ivy /repo/spark_processor/streaming_job.py
+
+  engine:
+    <<: *python
+    command:
+      - sh
+      - -c
+      - >-
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends libgomp1 >/dev/null &&
+        pip install -q kafka-python-ng==2.2.3 redis==5.2.1 lightgbm==4.6.0 numpy==2.2.6 &&
+        exec python -m serving.engine
