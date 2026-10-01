@@ -253,3 +253,76 @@ class Engine:
         return {"mode": mode, "locations": locations, "routes": out["routes"], "hubs": out["hubs"], "kpis": kpis,
                 "events": events, "incidents": active, "dq": self._dq(verdicts, now),
                 "health": self._health(series, now), "snapshot": snapshot}
+
+
+TICK_S = 10
+
+
+def _lag(consumer):
+    parts = consumer.assignment()
+    if not parts:
+        return None
+    ends = consumer.end_offsets(list(parts))
+    return sum(max(0, ends[tp] - consumer.position(tp)) for tp in parts)
+
+
+def main():
+    import os
+    import time
+    from datetime import datetime, timezone
+
+    import redis
+    from kafka import KafkaConsumer, KafkaProducer
+
+    from serving.redis_state import HASHES, decision_records, write_tick
+    from weatherops.network import NETWORK
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    bootstrap = os.environ.get("KAFKA_BOOTSTRAP", "kafka.weather-pipeline.svc.cluster.local:9092")
+    r = redis.Redis(host=os.environ.get("REDIS_HOST", "redis-master.weather-pipeline.svc.cluster.local"),
+                    port=6379, password=os.environ.get("REDIS_PASSWORD"), decode_responses=True)
+    r.ping()
+    # A restarted engine rebuilds state from new windows; clear what the last
+    # run left so the dashboard never mixes the two.
+    r.delete(*HASHES.values(), "incidents:active")
+
+    engine = Engine(NETWORK, climatology=risk.load_climatology())
+    consumer = KafkaConsumer("weather-features", "weather-quarantine", bootstrap_servers=bootstrap,
+                             group_id="risk-engine", auto_offset_reset="latest",
+                             value_deserializer=lambda v: json.loads(v.decode("utf-8")))
+    producer = KafkaProducer(bootstrap_servers=bootstrap,
+                             value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"))
+    log.info("engine consuming weather-features + weather-quarantine from %s", bootstrap)
+
+    previous, next_tick = {}, time.monotonic()
+    while True:
+        for tp, msgs in consumer.poll(timeout_ms=1000).items():
+            handle = engine.ingest_window if tp.topic == "weather-features" else engine.ingest_quarantine
+            for m in msgs:
+                try:
+                    handle(m.value)
+                except Exception:
+                    # One malformed record must not stop the engine; Kafka keeps it.
+                    log.exception("skipping record %s@%s", tp.topic, m.offset)
+        if time.monotonic() < next_tick:
+            continue
+        next_tick = time.monotonic() + TICK_S
+        try:
+            engine.ingest_spark_counters(r.get("dq:dropped_late"), r.get("dq:dropped_duplicates"))
+            now = datetime.now(timezone.utc)
+            result = engine.tick(now)
+            result["health"]["consumer_lag"] = _lag(consumer)
+            previous = write_tick(r, result, previous, now)
+        except redis.RedisError:
+            log.exception("Redis unavailable; state catches up on the next tick")
+            continue
+        for record in decision_records(result):
+            producer.send("weather-decisions", record)
+        producer.flush(timeout=5)
+        log.info("tick observed=%s incidents=%d routes_affected=%s",
+                 (result["mode"] or {}).get("observed_at"), len(result["incidents"]),
+                 result["kpis"]["routes_affected"])
+
+
+if __name__ == "__main__":
+    main()

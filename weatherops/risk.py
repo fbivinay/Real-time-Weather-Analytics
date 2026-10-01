@@ -171,3 +171,13 @@ def summarize(windows, observed_at, rain_24h=None):
         "humidity_pct": latest.get("humidity_avg"),
         "visibility_m": min(vis) if vis else None,
     }
+
+
+def load_climatology(path=None):
+    """city_id -> month ("1".."12") -> percentiles, from ml/climatology.py.
+    Missing file means no climatology: the boost simply never applies."""
+    import json
+    from pathlib import Path
+
+    path = Path(path) if path else Path(__file__).with_name("climatology.json")
+    return json.loads(path.read_text()) if path.exists() else {}
