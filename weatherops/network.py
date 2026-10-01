@@ -277,4 +277,6 @@ def _round_coords(obj, ndigits=4):
 
 
 if __name__ == "__main__":
-    json.dump(_round_coords(to_geojson(NETWORK)), sys.stdout, separators=(",", ":"))
+    # python -m weatherops.network dashboard/public/network.geojson
+    with open(sys.argv[1], "w", encoding="utf-8") as out:
+        json.dump(_round_coords(to_geojson(NETWORK)), out, separators=(",", ":"), ensure_ascii=False)
