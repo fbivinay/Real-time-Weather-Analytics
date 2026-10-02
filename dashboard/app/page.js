@@ -1,166 +1,185 @@
 "use client";
+// 01 Overview — what is happening right now.
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Spark } from "../components/charts";
+import { useUI } from "../components/Shell";
+import { Empty, Kpi, Num, RiskPill, Skeleton, SkeletonRows } from "../components/ui";
+import { inr, istHour, istTime, mins, num, pct, SEVERITY_LABEL, TIER_LABEL, TYPE_LABEL } from "../lib/format";
+import { useLive } from "../lib/live";
 
-import HealthPanel from "../components/HealthPanel";
-import IncidentFeed from "../components/IncidentFeed";
-import KpiStrip from "../components/KpiStrip";
-import LocationPanel from "../components/LocationPanel";
-import ModeBadge from "../components/ModeBadge";
-import OpsMap from "../components/OpsMap";
-import { CATEGORY_LABEL, HAZARD_LABEL, categoryOf } from "../lib/categories";
-import { scenarioName } from "../lib/format";
-import { useFeed } from "../lib/feed";
+function headline(ov) {
+  const k = ov.kpis;
+  const f = ov.future?.["12"] || {};
+  if (k.delayed_trips || f.heavy_exposed || f.exposed) {
+    const parts = [];
+    if (k.delayed_trips) parts.push(`slowing ${num(k.delayed_trips)} trucks on the road`);
+    if (f.exposed) parts.push(`putting ${num(f.exposed)} deliveries of the next 12 hours in its path`);
+    return `Rain is ${parts.join(" and ")}.`;
+  }
+  return `No significant rain on the network — ${num(k.in_transit)} deliveries are moving normally.`;
+}
 
-const HISTORY_POINTS = 120;
-
-function Legend() {
+function KpiBand({ ov }) {
+  const k = ov.kpis;
   return (
-    <div className="map-legend" aria-hidden="true">
-      {["critical", "high", "medium", "low"].map((c) => (
-        <span className="legend-row" key={c}>
-          <i className="swatch" style={{ background: `var(--risk-${c})` }} />
-          {CATEGORY_LABEL[c]}
-        </span>
-      ))}
-      <span className="legend-row"><i className="swatch-line" style={{ background: "var(--risk-high)" }} />Affected route</span>
-      <span className="legend-row"><i className="swatch-square" />Logistics hub</span>
-      <span className="legend-row"><i className="swatch-ring" />Suspect sensor (excluded)</span>
+    <div className="panel kpis">
+      <Kpi label="Total orders" value={k.total_orders} sub="today (sim day)" />
+      <Kpi label="In transit" value={k.in_transit} sub={`${num(k.active_trips)} trucks`} />
+      <Kpi label="Weather exposed" value={k.weather_exposed} sub="through rain now" />
+      <Kpi label="Weather affected" value={k.weather_affected} sub="by rain, today" hot={k.weather_affected > 0} />
+      <Kpi label="Delayed" value={k.delayed} sub="30+ min, any cause" />
+      <Kpi label="SLA risk" value={k.sla_risk} sub="may miss SLA, 24 h" hot={k.sla_risk > 0} />
+      <Kpi label="Average delay" value={k.avg_delay_min} sub={`on-time ${pct(k.on_time_rate)}`} format={(v) => mins(v)} />
+      <Kpi label="Weather impact cost" value={k.weather_cost_inr} sub="today, estimate" format={inr} />
     </div>
   );
 }
 
-function TopLocations({ ranked, onSelect }) {
+function LiveOps({ ov }) {
+  const s = ov.stream || {};
+  const k = ov.kpis;
+  const last = s.last_event || {};
+  const windows = s.windows || [];
   return (
-    <section className="card" aria-labelledby="top-title">
-      <div className="card-head">
-        <h2 id="top-title">Highest-risk locations</h2>
-        <span className="hint">Table view of the map · select a row for detail</span>
+    <div className="panel">
+      <div className="panel-h"><h2>Live operations</h2><span className="q">Spark 30-second windows, network total</span></div>
+      <div className="panel-b">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 16 }}>
+          <div><div className="note">Events / second</div><div style={{ fontSize: 22, fontWeight: 650 }}><Num value={s.events_per_s} format={(v) => num(v, 1)} /></div></div>
+          <div><div className="note">Active deliveries</div><div style={{ fontSize: 22, fontWeight: 650 }}><Num value={k.in_transit} /></div></div>
+          <div><div className="note">Trucks delayed by rain</div><div style={{ fontSize: 22, fontWeight: 650 }} className={k.delayed_trips ? "red" : ""}><Num value={k.delayed_trips} /></div></div>
+          <div><div className="note">Delivered today</div><div style={{ fontSize: 22, fontWeight: 650 }}><Num value={k.delivered_today} /></div></div>
+        </div>
+        {windows.length ? (
+          <Spark data={windows} value={(w) => w.events} height={44}
+            tooltip={(w) => <><div className="t">{istHour(w.window_start)} wall clock</div>{num(w.events)} events · {num(w.created)} orders · {num(w.completed)} delivered</>} />
+        ) : <Skeleton h={44} />}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 13 }} className="muted">
+          <span>Last event: <b className="mono" style={{ color: "var(--ink)" }}>{TYPE_LABEL[last.type] || "–"}</b>{last.order_id ? ` · ${last.order_id}` : ""}{last.city_id ? ` · ${last.city_id}` : ""}</span>
+          <span>Freshness <span className="mono">{s.freshness_s != null ? `${s.freshness_s}s` : "–"}</span> · lag <span className="mono">{num(s.consumer_lag ?? 0)}</span></span>
+        </div>
+        {k.wet_cities?.length ? (
+          <div style={{ marginTop: 12, fontSize: 13 }}>
+            <span className="muted">Raining now: </span>{k.wet_cities.map((c) => <Link key={c} href={`/map?sel=city:${c}`} className="tag" style={{ marginRight: 4, textDecoration: "none" }}>{c}</Link>)}
+          </div>
+        ) : null}
       </div>
-      {ranked.length === 0 ? (
-        <div className="empty">Waiting for the first feature windows (about a minute after the pipeline starts).</div>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
+    </div>
+  );
+}
+
+const TABS = [["states", "Regions"], ["routes", "Routes"], ["warehouses", "Warehouses"], ["cities", "Cities"]];
+const KIND = { states: "state", routes: "route", warehouses: "warehouse", cities: "city" };
+
+function CurrentRisk({ ov }) {
+  const router = useRouter();
+  const [tab, setTab] = useState("states");
+  const rows = ov.top?.[tab] || [];
+  return (
+    <div className="panel">
+      <div className="panel-h">
+        <h2>Where rain hits deliveries next</h2>
+        <div className="seg">{TABS.map(([k, l]) => <button key={k} type="button" className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}</div>
+      </div>
+      <div className="panel-b">
+        <table className="table">
+          <thead><tr><th>{TABS.find((t) => t[0] === tab)[1].replace(/s$/, "")}</th><th>Impact</th><th className="r">Orders 12 h</th><th className="r">Exposed</th><th className="r">Avg delay</th><th>Top route</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="click" onClick={() => router.push(`/map?sel=${KIND[tab]}:${encodeURIComponent(r.id)}`)}>
+                <td><span className="link">{r.code || r.name || r.id}</span></td>
+                <td><RiskPill score={r.score} category={r.category} /></td>
+                <td className="r num">{num(r.orders)}</td>
+                <td className="r num">{num(r.exposed)}</td>
+                <td className="r num">{r.avg_delay_min ? `+${mins(r.avg_delay_min)}` : "–"}</td>
+                <td className="mono" style={{ fontSize: 13 }}>{r.top_route || (tab === "routes" ? SEVERITY_LABEL[r.rain_now] : "–")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length ? <Empty>No impact data yet.</Empty> : null}
+      </div>
+    </div>
+  );
+}
+
+function CriticalOrders({ ov }) {
+  const { openOrder } = useUI();
+  const rows = ov.critical_orders || [];
+  return (
+    <div className="panel">
+      <div className="panel-h">
+        <h2>Critical upcoming orders</h2>
+        <span className="q">One row per route, service and dispatch wave · <Link href="/future" className="link">all upcoming orders →</Link></span>
+      </div>
+      <div className="panel-b">
+        {rows.length ? (
           <table className="table">
-            <thead>
-              <tr><th>Location</th><th>Risk</th><th>Score</th><th>Hazard</th><th>Source</th></tr>
-            </thead>
+            <thead><tr><th>Order</th><th>Route</th><th>Dispatch</th><th>Service</th><th>Weather</th><th>Risk</th><th className="r">Expected delay</th><th className="r">SLA breach</th></tr></thead>
             <tbody>
-              {ranked.map((l) => (
-                <tr key={l.station_id}>
-                  <td>
-                    <button type="button" className="linklike" onClick={() => onSelect(l.station_id)}>
-                      {l.name || l.station_id}
-                    </button>
-                  </td>
-                  <td><span className={`chip chip-${categoryOf(l)}`}>{CATEGORY_LABEL[categoryOf(l)]}</span></td>
-                  <td className="mono">{l.assessment.score}</td>
-                  <td>{HAZARD_LABEL[l.assessment.hazard] ?? "—"}</td>
-                  <td className="muted">{l.kind === "reference" ? "City reference" : "Hub sensor"}</td>
+              {rows.map((o) => (
+                <tr key={o.id} className="click" onClick={() => openOrder(o.id)}>
+                  <td className="mono"><span className="link">{o.id}</span>{o.similar ? <span className="faint"> +{num(o.similar)} similar</span> : null}</td>
+                  <td className="mono">{o.route}</td>
+                  <td className="num">{istTime(o.planned_dispatch)}</td>
+                  <td>{TIER_LABEL[o.tier]}</td>
+                  <td className="nowrap">{SEVERITY_LABEL[o.expected_class]} <span className="faint">({pct(o.p_rain, 0)})</span></td>
+                  <td><RiskPill score={o.score} category={o.category} /></td>
+                  <td className="r num">+{mins(o.expected_delay_min)}</td>
+                  <td className="r num">{pct(o.p_breach, 0)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </section>
+        ) : <Empty>No orders in the High or Critical band right now.</Empty>}
+      </div>
+    </div>
   );
 }
 
-export default function Page() {
-  const { state, connection, recording } = useFeed();
-  const [selected, setSelected] = useState(null);
-  const history = useRef({});
-
-  useEffect(() => {
-    history.current = {};
-    setSelected(null);
-  }, [state.mode?.source, state.mode?.scenario]);
-
-  useEffect(() => {
-    for (const [sid, loc] of Object.entries(state.locations)) {
-      const points = (history.current[sid] ??= []);
-      const last = points[points.length - 1];
-      if (!last || last.t !== loc.observed_at) {
-        points.push({ t: loc.observed_at, score: loc.assessment?.score ?? null });
-        if (points.length > HISTORY_POINTS) points.shift();
-      }
-    }
-  }, [state.locations]);
-
-  const ranked = useMemo(
-    () => Object.values(state.locations).filter((l) => l.assessment).sort((a, b) => b.assessment.score - a.assessment.score),
-    [state.locations],
-  );
-  const focus = state.locations[selected] ?? ranked[0] ?? null;
-
+export default function Overview() {
+  const live = useLive();
+  const ov = live.overview;
+  if (!ov) {
+    return (
+      <main className="page">
+        <Skeleton h={14} w={220} />
+        <Skeleton h={40} w={760} style={{ margin: "12px 0 24px" }} />
+        <Skeleton h={96} />
+        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", marginTop: 18 }}><SkeletonRows rows={8} /><SkeletonRows rows={8} /></div>
+        {live.status === "offline" ? <Empty>The live stream is unavailable and no snapshot could be loaded.</Empty> : null}
+      </main>
+    );
+  }
   return (
-    <div className="wrap">
-      <header className="top">
+    <main className="page">
+      <div className="pagehead">
         <div>
-          <p className="eyebrow">WeatherOps · weather risk and operations intelligence</p>
-          <h1>Where weather will hit operations next</h1>
-          <p className="lede">
-            Risk for 40 Indian cities and 25 logistics hubs, mapped onto linehaul corridors, last-mile routes
-            and live deliveries, with recommended actions for dispatch, fleet and warehouse teams.
-          </p>
+          <div className="eyebrow">01 · Overview · what is happening right now</div>
+          <h1 className="headline">{headline(ov)}</h1>
+          <p className="lede">ShopFlow India across 40 cities, 10 fulfilment centres and 80 routes. Figures update with every
+            engine tick from the live event stream.</p>
         </div>
-        <ModeBadge mode={state.mode} connection={connection} />
-      </header>
-
-      {connection === "recording" && (
-        <div className="banner">
-          <strong>Showing a recording.</strong> The cluster runs on demand to keep costs near zero; this is a
-          captured run of <em>{scenarioName(recording)}</em> through the full pipeline (Kafka, Spark, risk engine).
-        </div>
-      )}
-      {connection === "offline" && (
-        <div className="banner">
-          <strong>Cluster unreachable and no recording available.</strong> Start it with <span className="mono">./deploy.sh</span>.
-        </div>
-      )}
-
-      <KpiStrip kpis={state.kpis} />
-
-      <div className="grid-main">
-        <section className="card map-card" aria-labelledby="map-title">
-          <div className="card-head">
-            <h2 id="map-title">Risk map</h2>
-            <span className="hint">Stations sized and coloured by risk · routes coloured when Medium or above</span>
-          </div>
-          <div style={{ position: "relative" }}>
-            <OpsMap
-              locations={state.locations}
-              routes={state.routes}
-              incidents={state.incidents}
-              selected={focus?.station_id}
-              onSelect={setSelected}
-            />
-            <Legend />
-          </div>
-        </section>
-        <IncidentFeed
-          incidents={state.incidents}
-          prealerts={state.prealerts}
-          lastEvent={state.lastEvent}
-          onSelectRegion={(city) => setSelected(`REF-${city}`)}
-        />
       </div>
-
-      <div className="grid-lower">
-        <LocationPanel location={focus} history={focus ? history.current[focus.station_id] : null} />
-        <HealthPanel health={state.health} engine={state.engine} dq={state.dq} connection={connection} />
+      <KpiBand ov={ov} />
+      <div className="grid sect" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)" }}>
+        <div className="grid" style={{ alignContent: "start" }}>
+          <div className="panel">
+            <div className="panel-h"><h2>Alerts</h2><span className="q">Plain-language, from the engine</span></div>
+            <div className="panel-b">
+              <ul className="alerts">
+                {ov.alerts.map((a) => <li key={a.text} className={a.level}><i className="mk" /><span>{a.text}</span></li>)}
+              </ul>
+            </div>
+          </div>
+          <LiveOps ov={ov} />
+        </div>
+        <CurrentRisk ov={ov} />
       </div>
-
-      <TopLocations ranked={ranked.slice(0, 10)} onSelect={setSelected} />
-
-      <footer>
-        <span>Kafka → Spark Structured Streaming → risk engine → Redis → FastAPI WebSocket</span>
-        <span>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0)</span>
-        <span>Basemap: Natural Earth</span>
-        <span>Hub sensors and the logistics network are simulated</span>
-        <span className="mono">github.com/fbivinay/Real-time-Weather-Analytics</span>
-      </footer>
-    </div>
+      <div className="sect"><CriticalOrders ov={ov} /></div>
+    </main>
   );
 }

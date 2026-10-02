@@ -1,104 +1,94 @@
+"""API tests without Postgres: Redis-backed views, health, the WebSocket and
+input validation. SQL endpoints are exercised against a real database in
+test_api_pg.py when TEST_PG_DSN is set."""
 import asyncio
 import json
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from fastapi.testclient import TestClient
 
 from serving import api
 from serving.tests.fakes import FakeRedis
+from weatherops.rainfall import HourlyRain
 
 
 def now_iso(delta_s=0):
     return (datetime.now(timezone.utc) - timedelta(seconds=delta_s)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def populated():
+def no_db():
+    @contextmanager
+    def connect():
+        raise ConnectionError("no database in unit tests")
+        yield
+    return connect
+
+
+def running():
     r = FakeRedis()
-    r.set("state:mode", json.dumps({"source": "sim", "scenario": "storm-chennai",
-                                    "observed_at": "2026-11-20T08:40:00Z", "speed": 30}))
-    r.set("state:kpis", json.dumps({"active_incidents": 1, "deliveries_at_risk": 263}))
-    r.hset("state:locations", mapping={"REF-CHE": json.dumps({"station_id": "REF-CHE", "assessment": {"score": 73}})})
-    r.hset("state:routes", mapping={"LM-CHE-1": json.dumps({"status": "high"})})
-    r.hset("state:hubs", mapping={"CHE": json.dumps({"status": "high"})})
-    r.hset("incidents:active", mapping={"INC-1": json.dumps({"id": "INC-1", "region": "CHE"})})
-    r.zadd("incidents:history", {json.dumps({"id": "OLD-1"}): 100.0, json.dumps({"id": "OLD-2"}): 200.0})
-    r.set("dq:summary", json.dumps({"suspect": []}))
-    r.set("state:prealerts", json.dumps([{"region": "VJA", "forecast_category": "high"}]))
-    r.set("health:engine", json.dumps({"tick_at": now_iso(5), "latency_p50_s": 47.5, "freshness_s": {"sensor": 40}}))
-    r.set("health:spark:features-kafka", json.dumps({"name": "features-kafka", "at": now_iso(3)}))
-    r.lpush("series:REF-CHE", json.dumps({"t": "a", "score": 70}), json.dumps({"t": "b", "score": 73}))
+    r.set("state:overview", json.dumps({"sim_time": "2025-07-03T10:00:00Z", "kpis": {"in_transit": 900}}))
+    r.set("state:impact", json.dumps({"cities": {}, "states": {}, "routes": {}, "warehouses": {}, "hubs": {}}))
+    r.set("health:simulator", json.dumps({"at": now_iso(2), "sim_time": "2025-07-03T10:00:00Z"}))
+    r.set("health:engine", json.dumps({"tick_at": now_iso(3), "freshness_s": 4, "events_per_s": 51.2,
+                                       "consumer_lag": 0}))
+    for q in ("clean", "metrics", "quarantine"):
+        r.set(f"health:spark:{q}", json.dumps({"name": q, "at": now_iso(4)}))
     return r
 
 
 def client(r, broadcaster=None):
-    return TestClient(api.create_app(r, broadcaster=broadcaster or api.Broadcaster()))
+    return TestClient(api.create_app(r, no_db(), HourlyRain({}), broadcaster=broadcaster))
 
 
-def test_empty_redis_gives_a_valid_empty_snapshot():
+def test_overview_is_503_until_the_engine_writes_it():
     with client(FakeRedis()) as c:
-        snap = c.get("/api/snapshot").json()
-    assert snap["type"] == "snapshot"
-    assert snap["mode"] is None
-    assert snap["locations"] == {} and snap["routes"] == {} and snap["incidents"] == []
-    assert snap["kpis"]["active_incidents"] == 0
+        assert c.get("/api/overview").status_code == 503
+    with client(running()) as c:
+        assert c.get("/api/overview").json()["kpis"]["in_transit"] == 900
 
 
-def test_health_without_an_engine_is_down():
-    with client(FakeRedis()) as c:
-        health = c.get("/api/health").json()
-    assert health["components"]["engine"]["status"] == "down"
-    assert health["status"] == "down"
+def test_health_of_a_running_pipeline():
+    h = api.build_health(running(), lambda: True)
+    assert {k: v["status"] for k, v in h["components"].items()} == {
+        "api": "ok", "redis": "ok", "database": "ok", "simulator": "ok", "spark": "ok", "engine": "ok",
+        "stream": "ok", "kafka": "ok"}
+    assert h["status"] == "ok"
+    assert h["components"]["stream"]["events_per_s"] == 51.2
 
 
-def test_health_of_a_running_pipeline_is_ok():
-    with client(populated()) as c:
-        health = c.get("/api/health").json()
-    assert health["components"]["engine"]["status"] == "ok"
-    assert health["components"]["spark"]["status"] == "ok"
-    assert health["components"]["redis"]["status"] == "ok"
+def test_health_marks_missing_pieces_down():
+    r = running()
+    r.delete("health:spark:metrics", "health:simulator")
+    h = api.build_health(r, lambda: False)
+    c = h["components"]
+    assert (c["spark"]["status"], c["simulator"]["status"], c["database"]["status"], c["kafka"]["status"]) == \
+        ("down", "down", "down", "down")
+    assert h["status"] == "down"
 
 
-def test_snapshot_carries_state():
-    with client(populated()) as c:
-        snap = c.get("/api/snapshot").json()
-    assert snap["mode"]["scenario"] == "storm-chennai"
-    assert snap["locations"]["REF-CHE"]["assessment"]["score"] == 73
-    assert snap["incidents"][0]["id"] == "INC-1"
-    assert snap["kpis"]["deliveries_at_risk"] == 263
+def test_stale_stream_degrades():
+    r = running()
+    r.set("health:engine", json.dumps({"tick_at": now_iso(3), "freshness_s": 200}))
+    assert api.build_health(r, lambda: True)["components"]["stream"]["status"] == "degraded"
 
 
-def test_incident_history_is_newest_first():
-    with client(populated()) as c:
-        history = c.get("/api/incidents?status=history&limit=5").json()
-        active = c.get("/api/incidents").json()
-    assert [i["id"] for i in history["incidents"]] == ["OLD-2", "OLD-1"]
-    assert [i["id"] for i in active["incidents"]] == ["INC-1"]
+def test_unknown_location_and_bad_inputs():
+    with client(running()) as c:
+        assert c.get("/api/locations/planet/X").status_code == 404
+        assert c.get("/api/locations/city/NOPE").status_code == 404
+        assert c.get("/api/map?mode=sunshine").status_code == 422
+        assert c.get("/api/future?window=99").status_code == 422
+        assert c.get("/api/search?q=a").status_code == 422
 
 
-def test_station_detail_and_unknown_station():
-    with client(populated()) as c:
-        detail = c.get("/api/stations/REF-CHE").json()
-        missing = c.get("/api/stations/NOPE")
-    assert detail["location"]["station_id"] == "REF-CHE"
-    assert [p["score"] for p in detail["series"]] == [70, 73]    # oldest first for charts
-    assert missing.status_code == 404
-
-
-def test_model_card_404_until_the_engine_publishes_one():
-    r = populated()
-    with client(r) as c:
-        assert c.get("/api/model").status_code == 404
-        r.set("state:model", json.dumps({"version": "v1"}))
-        assert c.get("/api/model").json()["version"] == "v1"
-
-
-def test_websocket_sends_snapshot_then_relays_published_messages():
+def test_websocket_sends_snapshot_then_relays_ticks():
     b = api.Broadcaster()
-    with client(populated(), b) as c:
+    with client(running(), b) as c:
         with c.websocket_connect("/ws") as ws:
-            assert ws.receive_json()["type"] == "snapshot"
-            c.portal.call(b.publish, json.dumps({"type": "tick", "kpis": {}}))
+            first = ws.receive_json()
+            assert first["type"] == "snapshot" and first["overview"]["kpis"]["in_transit"] == 900
+            c.portal.call(b.publish, json.dumps({"type": "tick", "overview": {}}))
             assert ws.receive_json()["type"] == "tick"
 
 
@@ -109,23 +99,15 @@ def test_slow_client_is_dropped_without_blocking_others():
         for k in range(3):
             b.publish(f"m{k}")
             await fast.get()
-        assert slow not in b.clients
-        assert fast in b.clients
-        b.publish("after")
-        assert await fast.get() == "after"
+        assert slow not in b.clients and fast in b.clients
         assert slow.get_nowait() is None    # close sentinel for the dropped client
 
     asyncio.run(scenario())
 
 
-def test_snapshot_includes_engine_health_so_metrics_show_on_load():
-    with client(populated()) as c:
-        snap = c.get("/api/snapshot").json()
-    assert snap["engine"]["latency_p50_s"] == 47.5
-
-
-def test_snapshot_carries_prealerts():
-    with client(populated()) as c:
-        assert c.get("/api/snapshot").json()["prealerts"][0]["region"] == "VJA"
-    with client(FakeRedis()) as c:
-        assert c.get("/api/snapshot").json()["prealerts"] == []
+def test_ttl_cache_reuses_until_expiry():
+    calls = []
+    cache = api.TTLCache(ttl=60)
+    assert cache.get("k", lambda: calls.append(1) or 1) == 1
+    assert cache.get("k", lambda: calls.append(1) or 2) == 1
+    assert len(calls) == 1

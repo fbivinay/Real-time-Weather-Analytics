@@ -18,3 +18,4 @@ ml/data/
 
 .vercel
 .env*
+data/*.part.csv
