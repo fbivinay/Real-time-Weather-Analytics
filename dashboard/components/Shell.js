@@ -127,6 +127,7 @@ function Splash() {
   }, [live.overview, phase]);
   useEffect(() => {
     if (phase !== "hide") return undefined;
+    window.dispatchEvent(new Event("weatherops:reveal"));   // numbers count up as the page appears
     const t = setTimeout(() => setPhase("gone"), 650);
     return () => clearTimeout(t);
   }, [phase]);
