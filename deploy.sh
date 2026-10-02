@@ -135,7 +135,7 @@ bring_up() {
   say "Up"
   cat <<EOF
 Node      $ip   (ssh: $(tf output -raw ssh_command))
-API       ${WEATHEROPS_HOST:+https://$WEATHEROPS_HOST/api/snapshot}${WEATHEROPS_HOST:-not public - ./deploy.sh --tunnel}
+API       $([ -n "${WEATHEROPS_HOST:-}" ] && echo "https://$WEATHEROPS_HOST/api/snapshot" || echo "not public - ./deploy.sh --tunnel")
 S3        $(tf output -raw s3_bucket_name)
 
 Pods settle in 2-3 minutes (Spark downloads connector jars; Python pods

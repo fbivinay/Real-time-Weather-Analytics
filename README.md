@@ -211,9 +211,11 @@ cd dashboard && echo NEXT_PUBLIC_API_HOST=localhost:8000 > .env.local && npm ins
 
 The browser needs `wss://`, so the API is served over TLS by k3s's bundled Traefik
 with a Let's Encrypt certificate. To enable it:
-1. Create a free DuckDNS name pointing at the Elastic IP (`terraform -chdir=infra output public_ip`).
-2. Run `WEATHEROPS_HOST=<name>.duckdns.org ./deploy.sh`.
-3. Set `NEXT_PUBLIC_API_HOST=<name>.duckdns.org` on the Vercel project.
+1. Pick a hostname for the Elastic IP (`terraform -chdir=infra output public_ip`).
+   No account needed: `35-170-210-110.sslip.io` resolves to it (a DuckDNS name works too).
+2. Run `WEATHEROPS_HOST=35-170-210-110.sslip.io ./deploy.sh`.
+3. Set `NEXT_PUBLIC_API_HOST=35-170-210-110.sslip.io` on the Vercel project and redeploy.
+   While the node is down, the dashboard falls back to the recorded replay.
 
 `--down` saves the certificate locally, so repeated bring-ups stay inside Let's
 Encrypt's limit of five certificates per week.
