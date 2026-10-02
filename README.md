@@ -1,6 +1,6 @@
 # WeatherOps — Weather-Aware Delivery Intelligence
 
-**Live:** https://dashboard-eight-iota-93.vercel.app · desktop and laptop only (1366 px and wider)
+**Live:** https://weather-ops-delivery-intelligence.vercel.app · desktop and laptop only (1366 px and wider)
 
 WeatherOps is an internal tool for **ShopFlow India**, a fictional e-commerce company, used by
 delivery operations managers and logistics analysts. It answers, within seconds:
