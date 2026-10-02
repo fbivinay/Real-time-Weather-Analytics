@@ -14,13 +14,38 @@ const NAV = [["/", "01", "Overview"], ["/map", "02", "Map"], ["/future", "03", "
 const UICtx = createContext(null);
 export const useUI = () => useContext(UICtx);
 
-function Mark() {
+export function Mark({ className = "brand-mark" }) {
+  // Rain cloud over a delivery route: weather -> deliveries. Same art as app/icon.svg (the tab icon).
   return (
-    <svg className="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-      <rect x="1" y="1" width="38" height="38" rx="11" fill="#0b0b0c" />
-      <path d="M20 8c-4 6-7 9.6-7 13.4A7 7 0 0 0 20 28.5a7 7 0 0 0 7-7.1C27 17.6 24 14 20 8z" fill="#fff" />
-      <path d="M9 32.5h7l3-4 3 4h9" stroke="#e05a47" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <svg className={className} viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="15" fill="#0b0b0c" />
+      <path d="M19.5 33.5h25.2a7.6 7.6 0 0 0 .9-15.1 11.2 11.2 0 0 0-21.3-2.6 8.9 8.9 0 0 0-4.8 17.7z" fill="#fff" />
+      <g stroke="#7db4f0" strokeWidth="3.2" strokeLinecap="round">
+        <path d="M24.5 38.5l-2 5" /><path d="M33 38.5l-2 5" /><path d="M41.5 38.5l-2 5" />
+      </g>
+      <path d="M11.5 53h10.5l5-4.5 6 4.5h19.5" fill="none" stroke="#e05a47" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="11.5" cy="53" r="3.4" fill="#fff" />
+      <circle cx="52.5" cy="53" r="3.4" fill="#e05a47" />
     </svg>
+  );
+}
+
+// Phones and tablets (touch-only, mobile/tablet user agents, iPadOS, narrow screens) get a message instead of the app.
+function isDesktop() {
+  const ua = navigator.userAgent;
+  const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle|PlayBook|BlackBerry|Opera Mini|IEMobile/i.test(ua);
+  const iPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  const touchOnly = window.matchMedia("(pointer: coarse)").matches && !window.matchMedia("(any-pointer: fine)").matches;
+  return !(mobileUA || iPadOS || touchOnly || window.innerWidth < 1200);
+}
+
+function DeviceGate() {
+  return (
+    <div className="gate-msg">
+      <Mark className="gate-mark" />
+      <h1>Please open WeatherOps on a desktop or laptop</h1>
+      <p>This app is built for large screens and isn’t available on phones or tablets.</p>
+    </div>
   );
 }
 
@@ -252,18 +277,21 @@ function UIProvider({ children }) {
 }
 
 export default function Shell({ children }) {
+  const [desktop, setDesktop] = useState(null);
+  useEffect(() => {
+    const check = () => setDesktop(isDesktop());
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  if (desktop === false) return <DeviceGate />;
   return (
     <LiveProvider>
       <UIProvider>
         <Splash />
         <CountUp />
         <Chrome>{children}</Chrome>
-        <div className="gate">
-          <div>
-            <h1>WeatherOps is built for desktop and laptop screens.</h1>
-            <p className="muted">Open it on a display at least 1200 px wide.</p>
-          </div>
-        </div>
+        <div className="gate"><DeviceGate /></div>
       </UIProvider>
     </LiveProvider>
   );

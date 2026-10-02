@@ -10,6 +10,14 @@ import { Empty, Kpi, Num, RiskPill, Skeleton, SkeletonRows } from "../components
 import { inr, istHour, istTime, mins, num, pct, SEVERITY_LABEL, TIER_LABEL, TYPE_LABEL } from "../lib/format";
 import { useLive } from "../lib/live";
 
+function alertLink(a) {
+  if (a.link) return a.link;
+  const m = a.text.match(/([A-Z]{3}) → ([A-Z]{3})/);
+  if (m) return `/map?sel=route:R-${m[1]}-${m[2]}`;
+  if (/heavy rainfall/.test(a.text)) return "/future?window=12";
+  return "/map";
+}
+
 function headline(ov) {
   const k = ov.kpis;
   const f = ov.future?.["12"] || {};
@@ -141,6 +149,7 @@ function CriticalOrders({ ov }) {
 }
 
 export default function Overview() {
+  const router = useRouter();
   const live = useLive();
   const ov = live.overview;
   if (!ov) {
@@ -163,7 +172,11 @@ export default function Overview() {
             <div className="panel-h"><h2>Alerts</h2></div>
             <div className="panel-b">
               <ul className="alerts">
-                {ov.alerts.map((a) => <li key={a.text} className={a.level}><i className="mk" /><span>{a.text}</span></li>)}
+                {ov.alerts.map((a) => (
+                  <li key={a.text} className={`${a.level} go`} onClick={() => router.push(alertLink(a))}>
+                    <i className="mk" /><span>{a.text}</span><span className="arrow">→</span>
+                  </li>
+                ))}
               </ul>
             </div>
           </div>

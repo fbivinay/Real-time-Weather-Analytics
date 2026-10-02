@@ -1,6 +1,7 @@
 "use client";
 // 03 Future — which upcoming orders are at risk, why, and what could change it.
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 
 import { BarChart, HeatStrip } from "../../components/charts";
 import { useUI } from "../../components/Shell";
@@ -51,12 +52,12 @@ function Timeline({ data, window }) {
   );
 }
 
-function RiskTable({ window }) {
+function RiskTable({ window, route }) {
   const { openOrder } = useUI();
   const opts = useFetch("/api/history/options");
   const [sort, setSort] = useState("score");
   const [page, setPage] = useState(1);
-  const [f, setF] = useState({ category: "", city: "", warehouse: "", tier: "", q: "" });
+  const [f, setF] = useState({ category: "", city: "", warehouse: "", tier: "", q: "", route: route || "" });
   const [q, setQ] = useState("");
   const query = new URLSearchParams({ window, sort, page, size: 15, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) });
   const { data, loading, error, refreshing } = useFetch(`/api/future?${query}`, { refreshMs: 30000 });
@@ -83,6 +84,10 @@ function RiskTable({ window }) {
           <select className="select" value={f.warehouse} onChange={(e) => set("warehouse", e.target.value)} aria-label="Warehouse">
             <option value="">All warehouses</option>{(opts.data?.warehouses || []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
+          {f.route ? (
+            <button type="button" className="btn ghost" onClick={() => set("route", "")} title="Clear route filter">
+              Route {f.route.replace("R-", "").replace("-", " → ")} ×</button>
+          ) : null}
           <select className="select" value={f.tier} onChange={(e) => set("tier", e.target.value)} aria-label="Service">
             <option value="">All services</option>{Object.entries(TIER_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
@@ -223,9 +228,12 @@ function Scenario({ window, topCity }) {
   );
 }
 
-export default function Future() {
+function FuturePage() {
   const live = useLive();
-  const [window, setWindow] = useState(24);
+  const params = useSearchParams();
+  const fromUrl = Number(params.get("window"));
+  const [window, setWindow] = useState(WINDOWS.includes(fromUrl) ? fromUrl : 24);
+  const route = params.get("route") || "";
   const tl = useFetch("/api/future/timeline", { refreshMs: 30000 });
   const s = tl.data?.summary?.[String(window)] || live.overview?.future?.[String(window)];
   const topCity = live.overview?.top?.cities?.[0];
@@ -255,7 +263,11 @@ export default function Future() {
         </div>
         <Scenario window={window} topCity={topCity} />
       </div>
-      <div className="sect"><RiskTable window={window} /></div>
+      <div className="sect"><RiskTable key={route} window={window} route={route} /></div>
     </main>
   );
+}
+
+export default function Future() {
+  return <Suspense fallback={<main className="page" />}><FuturePage /></Suspense>;
 }

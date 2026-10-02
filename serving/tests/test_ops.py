@@ -61,7 +61,7 @@ def test_impact_rolls_up_every_level(ops):
     assert sum(c["orders"] for c in imp["cities"].values()) == total
     assert sum(w["orders"] for w in imp["warehouses"].values()) == total
     alerts = ops.alerts(imp, ops.future_summary(), ops.live())
-    assert alerts and all(a["text"] for a in alerts)
+    assert alerts and all(a["text"] and a["link"].startswith("/") for a in alerts)
 
 
 def test_timeline_covers_48_hours(ops):
