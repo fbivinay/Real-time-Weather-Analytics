@@ -260,12 +260,12 @@ export default function Future() {
       {s ? (
         <div className="panel kpis">
           <Kpi label="Scheduled orders" value={s.scheduled} sub={`dispatching in ${window} h`} />
-          <Kpi label="Weather exposed" value={s.exposed} sub="≥50% chance of rain on the trip" />
-          <Kpi label="Heavy rain exposure" value={s.heavy_exposed} sub="heavy or extreme expected" hot={s.heavy_exposed > 0} />
+          <Kpi label="Weather exposed" value={s.exposed} sub="likely rain on trip" />
+          <Kpi label="Heavy rain exposure" value={s.heavy_exposed} sub="heavy or extreme" hot={s.heavy_exposed > 0} />
           <Kpi label="High risk" value={s.high} sub="score 50–74" />
           <Kpi label="Critical" value={s.critical} sub="score 75+" hot={s.critical > 0} />
-          <Kpi label="Predicted delay" value={s.expected_delay_min} sub="weather minutes per order" format={(v) => mins(v)} />
-          <Kpi label="Potential SLA breaches" value={s.sla_breaches} sub="sum of breach probabilities" hot={s.sla_breaches > 0} />
+          <Kpi label="Predicted delay" value={s.expected_delay_min} sub="per order" format={(v) => mins(v)} />
+          <Kpi label="Potential SLA breaches" value={s.sla_breaches} sub="expected count" hot={s.sla_breaches > 0} />
         </div>
       ) : <SkeletonRows rows={2} h={60} />}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 400px", gap: 18, marginTop: 18, alignItems: "start" }}>
