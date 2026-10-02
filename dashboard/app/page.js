@@ -26,14 +26,14 @@ function KpiBand({ ov }) {
   const k = ov.kpis;
   return (
     <div className="panel kpis">
-      <Kpi label="Total orders" value={k.total_orders} sub="today (sim day)" />
+      <Kpi label="Total orders" value={k.total_orders} sub="today" />
       <Kpi label="In transit" value={k.in_transit} sub={`${num(k.active_trips)} trucks`} />
       <Kpi label="Weather exposed" value={k.weather_exposed} sub="through rain now" />
       <Kpi label="Weather affected" value={k.weather_affected} sub="by rain, today" hot={k.weather_affected > 0} />
       <Kpi label="Delayed" value={k.delayed} sub="30+ min, any cause" />
       <Kpi label="SLA risk" value={k.sla_risk} sub="may miss SLA, 24 h" hot={k.sla_risk > 0} />
       <Kpi label="Average delay" value={k.avg_delay_min} sub={`on-time ${pct(k.on_time_rate)}`} format={(v) => mins(v)} />
-      <Kpi label="Weather impact cost" value={k.weather_cost_inr} sub="today, estimate" format={inr} />
+      <Kpi label="Weather cost" value={k.weather_cost_inr} sub="today, estimate" format={inr} />
     </div>
   );
 }
