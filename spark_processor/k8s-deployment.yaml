@@ -43,14 +43,15 @@ spec:
           imagePullPolicy: IfNotPresent
           # redis (for the progress listener) is the job's only Python
           # dependency; the image's site-packages is not writable by uid 185.
+          # The Postgres JDBC driver comes in through --packages.
           command: ["sh", "-c"]
           args:
             - >-
               pip install --quiet --no-cache-dir --target /tmp/pydeps redis==5.2.1 &&
               exec /opt/spark/bin/spark-submit
               --master "local[*]"
-              --driver-memory 2g
-              --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4
+              --driver-memory 1200m
+              --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4,org.postgresql:postgresql:42.7.4
               --conf spark.jars.ivy=/checkpoints/.ivy2
               /app/svc/spark_processor/streaming_job.py
           env:
@@ -59,7 +60,14 @@ spec:
             - name: S3_BUCKET
               value: "weather-pipeline-021448121627"
             - name: CHECKPOINT_ROOT
-              value: "/checkpoints/weatherops"
+              value: "/checkpoints/shopflow"
+            - name: PGHOST
+              value: postgres.weather-pipeline.svc.cluster.local
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-auth
+                  key: password
             - name: REDIS_HOST
               value: "redis-master.weather-pipeline.svc.cluster.local"
             - name: REDIS_PASSWORD
@@ -89,7 +97,7 @@ spec:
               memory: "1Gi"
               cpu: "500m"
             limits:
-              memory: "3Gi"
+              memory: "2Gi"
       volumes:
         - name: lib
           configMap:

@@ -1,0 +1,66 @@
+# ShopFlow operations simulator -> Kafka shopflow-events. Clock position lives
+# in Redis, so a restart resumes the replay where it was.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopflow-simulator
+  namespace: weather-pipeline
+  labels:
+    app: shopflow-simulator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # two simulators would double the company
+  selector:
+    matchLabels:
+      app: shopflow-simulator
+  template:
+    metadata:
+      labels:
+        app: shopflow-simulator
+    spec:
+      containers:
+        - name: simulator
+          image: python:3.12-slim
+          command: ["sh", "-c"]
+          args:
+            - >-
+              pip install --quiet --no-cache-dir kafka-python-ng==2.2.3 redis==5.2.1 numpy==2.2.6 &&
+              exec python -m simulator.main
+          workingDir: /app/svc
+          env:
+            - name: PYTHONPATH
+              value: /app/lib:/app/svc
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: DATA_DIR
+              value: /app/data
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+          volumeMounts:
+            - name: lib
+              mountPath: /app/lib/weatherops
+            - name: code
+              mountPath: /app/svc/simulator
+            - name: data
+              mountPath: /app/data
+          resources:
+            requests:
+              memory: "192Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+      volumes:
+        - name: lib
+          configMap:
+            name: weatherops-lib
+        - name: code
+          configMap:
+            name: simulator-code
+        - name: data
+          hostPath:
+            path: /home/ubuntu/weatherops-data
+            type: Directory
