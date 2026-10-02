@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
+const INDIA = [[68.5, 7.5], [97.2, 35.2]];
 
 function bbox(geom) {
   let [x0, y0, x1, y1] = [180, 90, -180, -90];
@@ -23,6 +24,8 @@ export default function IndiaMap({ stateColors, cities, routeColors, selected, o
   const map = useRef(null);
   const geo = useRef({ states: {}, routes: {} });
   const [ready, setReady] = useState(false);
+  const selRef = useRef(selected);
+  selRef.current = selected;
   const cb = useRef({ onSelect, onHover });
   cb.current = { onSelect, onHover };
 
@@ -44,7 +47,7 @@ export default function IndiaMap({ stateColors, cities, routeColors, selected, o
       m.addSource("india", { type: "geojson", data: india });
       m.addSource("net", { type: "geojson", data: { type: "FeatureCollection", features: net.features.filter((f) => f.properties.layer !== "city") } });
       m.addSource("cities", { type: "geojson", data: EMPTY });
-      m.addLayer({ id: "neighbour", type: "fill", source: "india", filter: ["==", ["get", "layer"], "neighbour"], paint: { "fill-color": "#eef0f2", "fill-outline-color": "#d3d8dd" } });
+      m.addLayer({ id: "neighbour", type: "fill", source: "india", filter: ["==", ["get", "layer"], "neighbour"], paint: { "fill-color": "#e4e9ee", "fill-outline-color": "#e4e9ee" } });
       m.addLayer({ id: "country", type: "fill", source: "india", filter: ["==", ["get", "layer"], "country"], paint: { "fill-color": "#fbfbfb" } });
       m.addLayer({ id: "state-fill", type: "fill", source: "india", filter: ["==", ["get", "layer"], "state"],
         paint: { "fill-color": "#f6f6f6", "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.82, 1] } });
@@ -86,7 +89,13 @@ export default function IndiaMap({ stateColors, cities, routeColors, selected, o
       });
       setReady(true);
     });
-    return () => m.remove();
+    // Keep India framed when the window (or the panel next to it) resizes.
+    const ro = new ResizeObserver(() => {
+      m.resize();
+      if (!selRef.current?.kind) m.fitBounds(INDIA, { padding: 8, duration: 0 });
+    });
+    ro.observe(box.current);
+    return () => { ro.disconnect(); m.remove(); };
   }, []);
 
   useEffect(() => {
@@ -143,7 +152,7 @@ export default function IndiaMap({ stateColors, cities, routeColors, selected, o
     } else if (s.lngLat) {
       m.flyTo({ center: s.lngLat, zoom: Math.max(m.getZoom(), 5.4), duration: 700 });
     } else if (!s.kind) {
-      m.fitBounds([[68.5, 7.5], [97.2, 35.2]], { padding: 8, duration: 600 });
+      m.fitBounds(INDIA, { padding: 8, duration: 600 });
     }
   }, [ready, selected, focus]);
 
