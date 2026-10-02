@@ -10,7 +10,7 @@ import CountUp from "./CountUp";
 import OrderDrawer from "./OrderDrawer";
 import { StatusDot } from "./ui";
 
-const NAV = [["/", "01", "Overview"], ["/map", "02", "Map"], ["/future", "03", "Future"], ["/history", "04", "History"]];
+const NAV = [["/", "01", "Overview"], ["/map", "02", "Map"], ["/future", "03", "Future"], ["/history", "04", "History"], ["/sources", "05", "Sources"]];
 const UICtx = createContext(null);
 export const useUI = () => useContext(UICtx);
 
@@ -214,7 +214,7 @@ function Chrome({ children }) {
             <Mark />
             <div>
               <div className="brand-name">WeatherOps</div>
-              <div className="brand-sub"><span className="red">Weather-aware</span> delivery intelligence · ShopFlow India</div>
+              <div className="brand-sub"><span className="red">Weather-aware</span> delivery intelligence</div>
             </div>
           </Link>
           <nav className="pillnav" aria-label="Primary">
