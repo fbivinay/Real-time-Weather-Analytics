@@ -16,7 +16,7 @@ const STAGES = [
     key: "events", title: "Operations event stream", tag: "ShopFlow India · 60× time",
     text: "Every order becomes a life story of events: created, assigned, dispatched, moving, at the hub, delayed by rain, delivered — paced against the replayed weather.",
     steps: ["Orders", "Trucks & waves", "Weather each hour", "Delays from real rain"],
-    stat: [["~60", "events / second"], ["25,000", "orders a day"]],
+    stat: [["~60", "events / second"], ["~24,000", "orders a day"]],
     logos: ["python"],
   },
   {
@@ -42,16 +42,16 @@ const STAGES = [
   },
   {
     key: "store", title: "Storage", tag: "Postgres · Redis · S3",
-    text: "Postgres keeps orders, predictions and four and a half years of history; Redis holds the live views and pushes every tick; S3 keeps the raw event lake.",
-    steps: ["Orders & history", "Live views", "Pub/sub ticks", "Raw lake"],
-    stat: [["2.7 Cr", "orders of history"], ["50k", "monthly roll-ups"]],
+    text: "Postgres holds live orders, their risk, the cleaned event log and daily history since 2021. Redis keeps the live views and pushes each tick. S3 stores every raw event by day.",
+    steps: ["Live orders & risk", "Clean event log", "Daily history", "Live views", "Raw events by day"],
+    stat: [["2.7 Cr", "orders in history"], ["51,883", "monthly roll-ups"]],
     logos: ["postgresql", "redis", "amazons3"],
   },
   {
     key: "app", title: "API & dashboard", tag: "FastAPI · WebSocket · Next.js",
-    text: "FastAPI serves drill-downs, history and scenarios, and a WebSocket streams every engine tick straight into the Overview, Map, Future and History pages.",
+    text: "FastAPI serves drill-downs, history, search and scenarios, and a WebSocket streams every engine tick straight into the Overview, Map, Future and History pages.",
     steps: ["REST", "WebSocket", "Map drill-down", "What-if scenarios"],
-    stat: [["4", "pages"], ["live", "every 5 s"]],
+    stat: [["5", "pages"], ["5 s", "live refresh"]],
     logos: ["fastapi", "nextdotjs", "react", "maplibre"],
   },
 ];
@@ -63,25 +63,36 @@ const BRAND = {
   k3s: "#E8A800", docker: "#2496ED", amazonec2: "#FF9900", traefikproxy: "#24A1C1", letsencrypt: "#003A70",
 };
 
-const STACK = [
-  ["Data", [["apachekafka", "Apache Kafka", "Durable event log between every service.", "Replays the stream after any restart."],
-    ["apachespark", "Spark Streaming", "Validates, deduplicates and windows events.", "Writes clean data to Postgres and S3."],
-    ["postgresql", "PostgreSQL", "Orders, predictions and 4.5 years of history.", "Monthly roll-ups keep History instant."],
-    ["redis", "Redis", "Live views the engine rewrites every tick.", "Pub/sub fans updates out to browsers."]]],
-  ["Models", [["python", "Python", "Engine, event stream, seed and API.", "One shared package for every service."],
-    ["numpy", "NumPy", "Vectorised history and the SLA model fit.", "Logistic regression solved by IRLS."],
-    ["pandas", "pandas", "Climatology and history building.", "Daily rain to monthly percentiles."]]],
-  ["Interface", [["fastapi", "FastAPI", "REST drill-downs, history and scenarios.", "WebSocket for every live tick."],
-    ["nextdotjs", "Next.js", "Four-page desktop app.", "Cached, prefetched, animated views."],
-    ["react", "React", "Live state, drawers and charts.", "Hand-built SVG, no chart library."],
-    ["maplibre", "MapLibre", "India impact and rainfall map.", "Local India-view boundaries, no tiles."],
-    ["vercel", "Vercel", "Hosts the dashboard worldwide.", "Falls back to a saved snapshot offline."]]],
-  ["Platform", [["amazonec2", "AWS EC2", "One on-demand node runs the pipeline.", "Started and stopped by one script."],
-    ["amazons3", "Amazon S3", "Raw event lake, partitioned by day.", "Kept when the node is off."],
-    ["k3s", "k3s", "Lightweight Kubernetes on that node.", "Every service is a deployment."],
-    ["terraform", "Terraform", "Node, IP, bucket and access as code.", "Up or down in minutes."],
-    ["traefikproxy", "Traefik", "HTTPS ingress for the API.", "Routes REST and WebSocket."],
-    ["letsencrypt", "Let's Encrypt", "Free TLS certificate for the API.", "Renewed automatically."]]],
+// The flow, stage by stage: what each tool does with the data it receives.
+const FLOW = [
+  { stage: "Source", items: [
+    ["openmeteo", "Open-Meteo", "Real rainfall, 40 cities, 2015–2025.", "Daily for history, hourly for replay."],
+    ["pandas", "pandas · NumPy", "Builds monthly rain climatology.", "Seeds 4.5 years of delivery history."]] },
+  { stage: "Generate", items: [
+    ["python", "Python event stream", "Orders, trucks, hub arrivals, deliveries.", "Delays come from the real rain."]] },
+  { stage: "Transport", items: [
+    ["apachekafka", "Apache Kafka", "Every event lands on a topic first.", "A restart replays instead of losing data."]] },
+  { stage: "Process", items: [
+    ["apachespark", "Spark Streaming", "Checks, quarantines, de-duplicates.", "30-second windows for every city."]] },
+  { stage: "Decide", items: [
+    ["python", "Risk engine", "Weather → ETA, 7-part risk score.", "SLA odds and alerts every 5 seconds."]] },
+  { stage: "Store", items: [
+    ["postgresql", "PostgreSQL", "Live orders, risk, history since 2021.", "Monthly roll-ups keep History instant."],
+    ["redis", "Redis", "Live views rewritten every tick.", "Pub/sub pushes them to browsers."],
+    ["amazons3", "Amazon S3", "Every raw event, one folder a day.", "Kept even when the server is off."]] },
+  { stage: "Serve", items: [
+    ["fastapi", "FastAPI", "REST for drill-downs, search, scenarios.", "WebSocket for every live tick."]] },
+  { stage: "Show", items: [
+    ["nextdotjs", "Next.js · React", "Five desktop pages, cached and animated.", "Charts are hand-built SVG."],
+    ["maplibre", "MapLibre", "India impact and rainfall map.", "India-view borders, no map tiles."],
+    ["vercel", "Vercel", "Serves the dashboard worldwide.", "Shows a saved snapshot if offline."]] },
+];
+const PLATFORM = [
+  ["amazonec2", "AWS EC2", "One server runs the whole pipeline."],
+  ["k3s", "k3s", "Kubernetes keeps every service up."],
+  ["terraform", "Terraform", "Server, IP and bucket as code."],
+  ["traefikproxy", "Traefik", "HTTPS entry for the API."],
+  ["letsencrypt", "Let's Encrypt", "Free, auto-renewed certificate."],
 ];
 
 const RISK = [["Rainfall severity", 30], ["Route history", 20], ["Route exposure", 15], ["SLA tightness", 12],
@@ -89,6 +100,14 @@ const RISK = [["Rainfall severity", 30], ["Route history", 20], ["Route exposure
 const RISK_SAMPLE = [21, 15, 2, 12, 1, 4, 0.4];
 
 function Logo({ name, size = 28 }) {
+  if (name === "openmeteo") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 64 64" style={{ flex: "none" }} aria-hidden="true">
+        <path d="M17 44h31a10 10 0 0 0 1.2-19.9A14 14 0 0 0 22 21.7 11 11 0 0 0 17 44z" fill="#2f7fd8" />
+        <g stroke="#2f7fd8" strokeWidth="3.5" strokeLinecap="round"><path d="M24 50l-2 6" /><path d="M34 50l-2 6" /><path d="M44 50l-2 6" /></g>
+      </svg>
+    );
+  }
   return (
     <span className="src-logo" style={{ width: size, height: size, background: BRAND[name] || "#0b0b0c",
       WebkitMaskImage: `url(/logos/${name}.svg)`, maskImage: `url(/logos/${name}.svg)` }} />
@@ -276,22 +295,44 @@ export default function Sources() {
         </div>
       </Reveal>
       <div className="sect">
-        <h2 className="src-h2">Built with</h2>
-        {STACK.map(([group, items], g) => (
-          <div key={group} className="src-group">
-            <div className="src-group-t">{group}</div>
-            <div className="src-grid">
-              {items.map(([logo, name, a, b], k) => (
-                <Reveal key={logo} delay={k * 90}>
-                  <div className="src-card" style={{ animationDelay: `${(g * 4 + k) * 0.35}s` }}>
-                    <div className="src-card-logo" style={{ animationDelay: `${(g * 4 + k) * 0.27}s` }}><Logo name={logo} size={34} /></div>
-                    <div><b>{name}</b><p>{a}<br />{b}</p></div>
-                  </div>
-                </Reveal>
-              ))}
+        <h2 className="src-h2">Built with — follow the data</h2>
+        <div className="flow">
+          {FLOW.map((st, k) => (
+            <div key={st.stage} className="flow-stage" style={{ "--d": `${k * 0.45}s` }}>
+              <Reveal delay={k * 70}>
+                <div className="flow-head"><span className="flow-n">{k + 1}</span>{st.stage}</div>
+                <div className="flow-items">
+                  {st.items.map(([logo, name, a, b], j) => (
+                    <div key={name} className="flow-card" style={{ animationDelay: `${k * 0.45 + j * 0.15}s` }}>
+                      <div className="flow-logo"><Logo name={logo} size={32} /></div>
+                      <div><b>{name}</b><p>{a}<br />{b}</p></div>
+                    </div>
+                  ))}
+                </div>
+              </Reveal>
+              {k < FLOW.length - 1 ? (
+                <div className={`flow-arrow${(k + 1) % 4 === 0 ? " turn" : ""}`} aria-hidden="true">
+                  <i className="dash" /><i className="pkt" style={{ animationDelay: `${k * 0.45}s` }} />
+                  <i className="pkt p2" style={{ animationDelay: `${k * 0.45 + 0.8}s` }} /><b />
+                </div>
+              ) : null}
             </div>
+          ))}
+        </div>
+        <div className="flow-platform">
+          <div className="flow-up" aria-hidden="true">{Array.from({ length: 5 }, (_, i) => <i key={i} style={{ animationDelay: `${i * 0.3}s` }} />)}</div>
+          <div className="flow-head"><span className="flow-n">↑</span>Everything above runs on</div>
+          <div className="flow-plat-items">
+            {PLATFORM.map(([logo, name, a], i) => (
+              <Reveal key={logo} delay={i * 80}>
+                <div className="flow-card small" style={{ animationDelay: `${i * 0.3}s` }}>
+                  <div className="flow-logo"><Logo name={logo} size={28} /></div>
+                  <div><b>{name}</b><p>{a}</p></div>
+                </div>
+              </Reveal>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </main>
   );
