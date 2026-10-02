@@ -92,26 +92,27 @@ def _accuracy(lead_h):
     return max(0.5, 0.9 - 0.0085 * max(lead_h, 0))
 
 
-def forecast(hourly, city_id, when, lead_h):
-    """Probability of each class at `when`, forecast `lead_h` hours ahead.
+def forecast_probs(true_class, lead_h):
+    """Class probabilities of a forecast `lead_h` hours ahead when the truth is `true_class`.
 
     The true class keeps `accuracy`; the rest spreads to the neighbouring
     classes (a forecast misses by one category far more often than by two).
-    Deterministic, so the same order scores the same on every tick.
     """
-    mm = hourly.mmph(city_id, when)
-    true = CLASSES.index(hourly_class(mm))
+    true = CLASSES.index(true_class)
     acc = _accuracy(lead_h)
     probs = [0.0] * len(CLASSES)
     probs[true] = acc
     neighbours = [i for i in (true - 1, true + 1) if 0 <= i < len(CLASSES)]
     for i in neighbours:
         probs[i] += (1 - acc) / len(neighbours)
-    return {
-        "mmph": round(mm, 1),
-        "probs": dict(zip(CLASSES, (round(p, 4) for p in probs))),
-        "p_rain": round(1 - probs[0], 4),
-    }
+    return dict(zip(CLASSES, (round(p, 4) for p in probs)))
+
+
+def forecast(hourly, city_id, when, lead_h):
+    """Forecast for one city-hour. Deterministic, so an order scores the same on every tick."""
+    mm = hourly.mmph(city_id, when)
+    probs = forecast_probs(hourly_class(mm), lead_h)
+    return {"mmph": round(mm, 1), "probs": probs, "p_rain": round(1 - probs["none"], 4)}
 
 
 def hours(start, count):
