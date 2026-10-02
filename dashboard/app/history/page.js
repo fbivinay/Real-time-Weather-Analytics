@@ -82,7 +82,7 @@ function Breakdown({ rows, label, onPick }) {
             <td style={{ width: "30%", minWidth: 170 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 72px", gap: 8, alignItems: "center" }}>
                 <div className="bar"><i style={{ width: `${((r.weather_cost || 0) / max) * 100}%` }} /></div>
-                <span className="num" style={{ textAlign: "right", fontSize: 13 }}>{inr(r.weather_cost)}</span>
+                <span className="num" style={{ textAlign: "right", fontSize: 14.9 }}>{inr(r.weather_cost)}</span>
               </div>
             </td>
             <td className="r num">{num(r.orders)}</td>
@@ -119,14 +119,7 @@ export default function History() {
     <main className="page">
       <div className="pagehead">
         <div>
-          <div className="eyebrow">04 · History · what happened</div>
-          <h1 className="headline">
-            {t ? <>Weather cost ShopFlow <span className="red">{inr(t.weather_cost)}</span> and delayed {num(t.affected)} deliveries</> : "Weather impact on deliveries, 2021 onwards"}
-          </h1>
-          <p className="lede">
-            {t ? `${num(t.orders)} orders from ${t.first_day} to ${t.last_day}${active.length ? ", filtered" : ""}. ` : ""}
-            Synthetic history driven by real daily rainfall; live simulated days roll in every few minutes. Costs are simulated estimates.
-          </p>
+          <h1 className="headline">Delivery history</h1>
         </div>
       </div>
       <Filters f={f} set={set} opts={opts.data} />
@@ -162,32 +155,31 @@ export default function History() {
               <div className="legend" style={{ marginTop: 10 }}>
                 <span><i style={{ background: "#cc5a43" }} />Monsoon months (Jun–Sep)</span>
                 <span><i style={{ background: "#0b0b0c" }} />Other months</span>
-                <span className="faint">Click a month to filter to it.</span>
+                
               </div>
             </div>
           </div>
 
           <div className="grid sect" style={{ gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)" }}>
             <div className="panel">
-              <div className="panel-h"><h2>Year over year</h2><span className="q">Growth compares orders per day</span></div>
+              <div className="panel-h"><h2>Year over year</h2></div>
               <div className="panel-b"><YearTable rows={data.yearly} /></div>
             </div>
             <div className="panel">
-              <div className="panel-h"><h2>Seasons</h2><span className="q">Is the monsoon the problem?</span></div>
+              <div className="panel-h"><h2>Seasons</h2></div>
               <div className="panel-b">
                 <HBars rows={seasons} value={(s) => s.affected / s.orders} label={(s) => s.season[0].toUpperCase() + s.season.slice(1)}
                   format={(v) => pct(v)} color={(s) => (s.season === "monsoon" ? "#cc5a43" : "#0b0b0c")}
                   sub={(s) => `${inr(per1000(s))} / 1k orders`} />
-                <div className="note" style={{ marginTop: 12 }}>Share of orders delayed by rain, and weather cost per 1,000 orders.</div>
               </div>
             </div>
           </div>
 
           <div className="panel sect">
-            <div className="panel-h"><h2>Rain severity vs delivery outcome</h2><span className="q">Does heavier rain really cost more?</span></div>
+            <div className="panel-h"><h2>Rain severity vs delivery outcome</h2></div>
             <div className="panel-b">
               {heavy && rain && dry ? (
-                <p style={{ margin: "0 0 16px", fontSize: 15 }}>
+                <p style={{ margin: "0 0 16px", fontSize: 17.2 }}>
                   On heavy-rain route-days an exposed order is delayed <b>{mins(heavy.delay_per_exposed_min)}</b> on average —
                   {" "}<b>{(heavy.delay_per_exposed_min / Math.max(1, rain.delay_per_exposed_min)).toFixed(1)}×</b> a normal rainy day —
                   and the SLA breach rate rises from <b>{pct(dry.breach_rate)}</b> when dry to <b>{pct(heavy.breach_rate)}</b>.
@@ -210,11 +202,11 @@ export default function History() {
 
           <div className="grid sect" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
             <div className="panel">
-              <div className="panel-h"><h2>By {geo.level}</h2><span className="q">Click to drill down · top 25 by weather cost</span></div>
+              <div className="panel-h"><h2>By {geo.level}</h2></div>
               <div className="panel-b"><Breakdown rows={geo.rows} label={geo.level[0].toUpperCase() + geo.level.slice(1)} onPick={geo.level === "route" ? null : pickGeo} /></div>
             </div>
             <div className="panel">
-              <div className="panel-h"><h2>By product category</h2><span className="q">Which categories absorb the delays</span></div>
+              <div className="panel-h"><h2>By product category</h2></div>
               <div className="panel-b"><Breakdown rows={data.categories} label="Category" /></div>
             </div>
           </div>

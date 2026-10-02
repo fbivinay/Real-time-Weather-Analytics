@@ -25,10 +25,9 @@ export default function LocationPanel({ kind, id, name, mapRow, onSelect }) {
     <div>
       <div className="eyebrow">{KIND_LABEL[kind]}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 2px" }}>
-        <h2 style={{ fontSize: 24, fontWeight: 650, letterSpacing: "-0.02em", margin: 0 }}>{name || id}</h2>
+        <h2 style={{ fontSize: 27.6, fontWeight: 650, letterSpacing: "-0.02em", margin: 0 }}>{name || id}</h2>
         <RiskPill score={score} category={category(score)} />
       </div>
-      <div className="note">Impact score 0–100: risk of the next 12 h of deliveries{mapRow?.historical_score != null ? `, blended with monsoon history (${Math.round(mapRow.historical_score)})` : ""}.</div>
 
       <div className="kv" style={{ marginTop: 16 }}>
         <Stat l="Orders, next 12 h" v={num(live.orders)} />
@@ -38,7 +37,7 @@ export default function LocationPanel({ kind, id, name, mapRow, onSelect }) {
         <Stat l="SLA risk" v={num(live.sla_risk)} />
         <Stat l="In transit now" v={num(live.in_transit)} />
       </div>
-      {live.top_route ? <div style={{ marginTop: 12, fontSize: 14 }}><span className="muted">Top affected route </span><span className="mono">{live.top_route}</span></div> : null}
+      {live.top_route ? <div style={{ marginTop: 12, fontSize: 16.1 }}><span className="muted">Top affected route </span><span className="mono">{live.top_route}</span></div> : null}
 
       {loading && !data ? <SkeletonRows rows={6} /> : null}
       {error && !data ? <Empty>Details for this location need the live backend.</Empty> : null}
@@ -73,7 +72,6 @@ export default function LocationPanel({ kind, id, name, mapRow, onSelect }) {
               ))}
             </tbody>
           </table>
-          <div className="note" style={{ marginTop: 6 }}>Passes {data.route.path.join(" → ")}. Multipliers {Object.values(MULT).join(" / ")} × sensitivity.</div>
         </>
       ) : null}
 
@@ -103,7 +101,7 @@ export default function LocationPanel({ kind, id, name, mapRow, onSelect }) {
 
       {hist?.last_12_months?.length ? (
         <>
-          <div className="h3">Weather cost, last 12 months <span className="faint" style={{ fontWeight: 400 }}>· simulated estimate</span></div>
+          <div className="h3">Weather cost, last 12 months</div>
           <BarChart data={hist.last_12_months} value={(d) => d.weather_cost || 0} label={(d) => MONTHS[+d.month.slice(5) - 1][0]}
             format={inr} yFormat={(v) => inr(v).replace("₹", "")} height={130}
             color={(d) => ([6, 7, 8, 9].includes(+d.month.slice(5)) ? "#cc5a43" : "#0b0b0c")}

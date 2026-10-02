@@ -68,14 +68,10 @@ function IndiaPanel({ data, mode, onSelect }) {
   rows.sort((a, b) => b.v - a.v);
   return (
     <div>
-      <div className="eyebrow">India</div>
-      <h2 style={{ fontSize: 24, fontWeight: 650, letterSpacing: "-0.02em", margin: "4px 0 2px" }}>
+      
+      <h2 style={{ fontSize: 27.6, fontWeight: 650, letterSpacing: "-0.02em", margin: "4px 0 2px" }}>
         {mode === "rainfall" ? `Where it rains in ${data.monthName}` : "Where rain hurts deliveries"}
       </h2>
-      <div className="note">
-        {mode === "rainfall" ? "Average monthly rainfall 2015–2025 (Open-Meteo archive). Pick a month on the map."
-          : "Impact index = 60% live risk of the next 12 h of deliveries + 40% monsoon history (weather cost per order). Click a state, city, FC or route."}
-      </div>
       <table className="table" style={{ marginTop: 12 }}>
         <tbody>
           {rows.map((r) => (
@@ -177,8 +173,7 @@ function MapPage() {
     <main className="page" style={{ paddingTop: 22 }}>
       <div className="pagehead" style={{ marginBottom: 16 }}>
         <div>
-          <div className="eyebrow">02 · Map · where is the problem</div>
-          <h1 className="headline" style={{ fontSize: 28 }}>{mode === "rainfall" ? `Rainfall pattern in ${MONTHS[m - 1]}` : "Weather → delivery impact across India"}</h1>
+          <h1 className="headline" style={{ fontSize: 32.2 }}>{mode === "rainfall" ? `Rainfall pattern in ${MONTHS[m - 1]}` : "Weather → delivery impact across India"}</h1>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <div className="seg">
