@@ -10,6 +10,7 @@ warehouse's route to the city's delivery hub, then goes out for last mile.
 """
 import random
 from dataclasses import dataclass
+from datetime import date
 
 from weatherops import geo
 from weatherops.network import CITIES, HUBS
@@ -44,6 +45,30 @@ CITY_SENSITIVITY = {
     "VSK": 1.1, "DDN": 1.2, "SRT": 1.15, "NSK": 1.05, "JOD": 0.7, "JAI": 0.8, "RJK": 0.85,
     "AMD": 0.9, "AGR": 0.9, "LDH": 0.9, "CHD": 0.95,
 }
+
+# Company-wide order volume: ~9k/day in Jan 2021 growing ~25 % a year, with
+# weekly and festive-season (Oct-Nov) patterns; orders placed peak at lunch
+# and late evening (IST).
+BASE_ORDERS = 9000
+BASE_DAY = date(2021, 1, 1)
+GROWTH = 1.25
+WEEKDAY = (1.04, 1.0, 0.98, 0.99, 1.02, 1.08, 0.92)          # Mon..Sun
+MONTH = {1: .90, 2: .92, 3: .97, 4: .97, 5: 1.0, 6: .98, 7: .97, 8: 1.02, 9: 1.05,
+         10: 1.35, 11: 1.30, 12: 1.08}
+HOUR_IST = (0.35, 0.2, 0.12, 0.1, 0.12, 0.25, 0.5, 0.8, 1.0, 1.2, 1.4, 1.55,
+            1.6, 1.5, 1.35, 1.25, 1.2, 1.25, 1.4, 1.6, 1.75, 1.7, 1.3, 0.75)
+_HOUR_MEAN = sum(HOUR_IST) / 24
+
+
+def national_orders(day):
+    years = (day - BASE_DAY).days / 365.25
+    return BASE_ORDERS * GROWTH ** years * WEEKDAY[day.weekday()] * MONTH[day.month]
+
+
+def hourly_share(ist_hour):
+    """Relative order rate this IST hour (mean 1)."""
+    return HOUR_IST[ist_hour] / _HOUR_MEAN
+
 
 TIERS = ("express", "standard", "economy")
 TIER_MIX = (0.20, 0.65, 0.15)
