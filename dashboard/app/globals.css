@@ -266,7 +266,7 @@ html { scroll-behavior: smooth; }
 /* alerts */
 .alerts { list-style: none; margin: 0; padding: 0; }
 .alerts li {
-  display: grid; grid-template-columns: 10px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: 10px 1fr 18px; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line);
   font-size: 17.2px; animation: rowin 0.3s var(--ease) both;
 }
 .alerts li:first-child { border-top: 0; }
@@ -396,3 +396,13 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 @keyframes fill { from { width: 0; } to { width: 100%; } }
 .duo { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 @media (max-width: 1700px) { .duo { grid-template-columns: minmax(0, 1fr); } }
+
+.gate-msg { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 32px;
+  text-align: center; background: var(--bg); }
+.gate-msg .gate-mark { width: 88px; height: 88px; margin-bottom: 6px; }
+.gate-msg h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin: 0; max-width: 520px; }
+.gate-msg p { color: var(--muted); margin: 0; font-size: 17px; max-width: 460px; }
+.alerts li.go { cursor: pointer; transition: background 0.15s var(--ease); border-radius: 10px; }
+.alerts li.go:hover { background: var(--panel-2); }
+.alerts li .arrow { opacity: 0; transition: opacity 0.15s, transform 0.15s; color: var(--muted); }
+.alerts li.go:hover .arrow { opacity: 1; transform: translateX(3px); }

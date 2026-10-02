@@ -371,31 +371,38 @@ class Ops:
         return {"routes": routes, "cities": cities, "states": states, "warehouses": warehouses, "hubs": hubs}
 
     def alerts(self, impact, summary, live):
+        """Plain-language alerts; each carries `link`, the dashboard view that explains it."""
         out = []
         s12 = summary["12"]
         if s12["heavy_exposed"]:
-            out.append({"level": "high", "text": f"{s12['heavy_exposed']:,} deliveries dispatching in the next 12 h "
-                                                 "are exposed to heavy rainfall."})
+            out.append({"level": "high", "link": "/future?window=12",
+                        "text": f"{s12['heavy_exposed']:,} deliveries dispatching in the next 12 h "
+                                "are exposed to heavy rainfall."})
         if live["delayed_trips"]:
-            out.append({"level": "high", "text": f"{live['delayed_trips']} trucks on the road are running late "
-                                                 "because of rain."})
+            worst = max(impact["routes"].values(), key=lambda r: (r["delayed_trips"], r["in_transit"]), default=None)
+            out.append({"level": "high", "link": f"/map?sel=route:{worst['id']}" if worst else "/map",
+                        "text": f"{live['delayed_trips']} trucks on the road are running late because of rain."})
         top = sorted(impact["routes"].values(), key=lambda r: -r["avg_delay_min"])[:3]
         top = [r for r in top if r["avg_delay_min"] >= 15]
         if top:
-            out.append({"level": "medium", "text": "Highest expected delay: " + ", ".join(
-                f"{r['code']} (+{round(r['avg_delay_min'])} min)" for r in top) + "."})
+            out.append({"level": "medium", "link": f"/map?sel=route:{top[0]['id']}",
+                        "text": "Highest expected delay: " + ", ".join(
+                            f"{r['code']} (+{round(r['avg_delay_min'])} min)" for r in top) + "."})
         for r in sorted(impact["routes"].values(), key=lambda r: -r["sla_risk"])[:2]:
             if r["sla_risk"] >= 5:
-                out.append({"level": "medium", "text": f"{r['sla_risk']} orders on {r['code']} may breach their SLA."})
+                out.append({"level": "medium", "link": f"/future?window=24&route={r['id']}",
+                            "text": f"{r['sla_risk']} orders on {r['code']} may breach their SLA."})
         total_exposed = sum(w["exposed"] for w in impact["warehouses"].values())
         if total_exposed:
             wid, w = max(impact["warehouses"].items(), key=lambda kv: kv[1]["exposed"])
             share = w["exposed"] / total_exposed
             if share >= 0.25:
-                out.append({"level": "info", "text": f"{NET.warehouses[wid].name} handles {round(share * 100)}% of "
-                                                     "weather-exposed deliveries in the next 12 h."})
+                out.append({"level": "info", "link": f"/map?sel=warehouse:{wid}",
+                            "text": f"{NET.warehouses[wid].name} handles {round(share * 100)}% of "
+                                    "weather-exposed deliveries in the next 12 h."})
         if not out:
-            out.append({"level": "info", "text": "No significant rainfall exposure across the network right now."})
+            out.append({"level": "info", "link": "/map",
+                        "text": "No significant rainfall exposure across the network right now."})
         return out
 
     def critical_orders(self, limit=20):
