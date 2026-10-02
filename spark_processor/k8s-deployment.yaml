@@ -1,6 +1,6 @@
-# The job's Python lives in a ConfigMap built straight from the real source
-# files (see deploy.sh), so there is no image to build or push and the .py
-# files on disk stay the single source of truth.
+# The job's Python ships as ConfigMaps built from the real source files (see
+# deploy.sh): weatherops-lib is the shared package, weather-processor-code
+# this job. No image to build or push.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -41,22 +41,32 @@ spec:
         - name: weather-processor
           image: apache/spark:3.5.3-python3
           imagePullPolicy: IfNotPresent
-          command: ["/opt/spark/bin/spark-submit"]
+          # redis (for the progress listener) is the job's only Python
+          # dependency; the image's site-packages is not writable by uid 185.
+          command: ["sh", "-c"]
           args:
-            - "--master"
-            - "local[*]"
-            - "--driver-memory"
-            - "2g"
-            - "--packages"
-            - "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4"
-            - "--conf"
-            - "spark.jars.ivy=/checkpoints/.ivy2"
-            - "/app/streaming_job.py"
+            - >-
+              pip install --quiet --no-cache-dir --target /tmp/pydeps redis==5.2.1 &&
+              exec /opt/spark/bin/spark-submit
+              --master "local[*]"
+              --driver-memory 2g
+              --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4
+              --conf spark.jars.ivy=/checkpoints/.ivy2
+              /app/svc/spark_processor/streaming_job.py
           env:
             - name: PYTHONPATH
-              value: "/app"
+              value: "/app/svc:/app/lib:/tmp/pydeps"
             - name: S3_BUCKET
               value: "weather-pipeline-021448121627"
+            - name: CHECKPOINT_ROOT
+              value: "/checkpoints/weatherops"
+            - name: REDIS_HOST
+              value: "redis-master.weather-pipeline.svc.cluster.local"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -68,8 +78,10 @@ spec:
                   name: aws-s3-creds
                   key: secret-access-key
           volumeMounts:
+            - name: lib
+              mountPath: /app/lib/weatherops
             - name: code
-              mountPath: /app
+              mountPath: /app/svc/spark_processor
             - name: checkpoints
               mountPath: /checkpoints
           resources:
@@ -79,6 +91,9 @@ spec:
             limits:
               memory: "3Gi"
       volumes:
+        - name: lib
+          configMap:
+            name: weatherops-lib
         - name: code
           configMap:
             name: weather-processor-code

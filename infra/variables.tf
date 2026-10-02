@@ -27,18 +27,8 @@ variable "allowed_ssh_cidr" {
   type        = string
 }
 
-# NOTE: changing this value also requires updating the hardcoded "9094" in
-# infra/user-data.sh's service-node-port-range and
-# infra/helm/kafka-values.yaml's externalAccess.controller.service.nodePorts
-# — this variable does NOT automatically propagate to those files.
-variable "kafka_external_nodeport" {
-  description = "NodePort used for the Kafka external listener"
-  type        = number
-  default     = 9094
-}
-
-variable "api_nodeport" {
-  description = "NodePort serving the read-only weather API to the dashboard"
-  type        = number
-  default     = 30080
+variable "node_enabled" {
+  description = "false destroys only the EC2 node; the Elastic IP, S3 bucket and IAM user stay"
+  type        = bool
+  default     = true
 }

@@ -10,3 +10,11 @@ infra/kubeconfig
 __pycache__/
 *.pyc
 .superpowers/
+
+.venv/
+.pytest_cache/
+ml/data/
+.playwright-mcp/
+
+.vercel
+.env*

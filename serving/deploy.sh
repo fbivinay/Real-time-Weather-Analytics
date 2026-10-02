@@ -1,37 +1,23 @@
 #!/usr/bin/env bash
-# Deploys the serving layer: Kafka -> Redis consumer, and the read-only API.
+# Deploys the serving layer: the risk engine and the REST/WebSocket API.
 #   ./deploy.sh              # node IP from terraform output
 #   ./deploy.sh 1.2.3.4      # explicit node IP
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$DIR/.." && pwd)"
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/weather-pipeline}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/infra/lib.sh" "$@"
 
-NODE_IP="${1:-$(terraform -chdir="$REPO_ROOT/infra" output -raw public_ip)}"
+echo "== Node $NODE_IP: engine + API =="
+push_configmap weatherops-lib weatherops
+push_configmap serving-code serving
+# Trained models are 1-2 MB each, over the 1 MiB ConfigMap limit; on a
+# single-node cluster a hostPath directory is the simple, safe channel.
+if [ -f "$REPO_ROOT/ml/artifacts/model_card.json" ]; then
+  tar -C "$REPO_ROOT/ml/artifacts" -cf - .     | "${SSH[@]}" "rm -rf ~/weatherops-models && mkdir -p ~/weatherops-models && tar -C ~/weatherops-models -xf -"
+fi
 
-# accept-new trusts a first-time host but refuses a changed key; see the note
-# in spark_processor/deploy.sh.
-SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@$NODE_IP")
-KUBECTL="sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml"
+# The pre-WeatherOps consumer and its ConfigMap.
+kube delete deployment weather-consumer -n "$NAMESPACE" --ignore-not-found
+kube delete configmap weather-serving-code -n "$NAMESPACE" --ignore-not-found
 
-echo "== Node $NODE_IP =="
-
-echo "== Source ConfigMap =="
-tar -C "$REPO_ROOT" -cf - serving/consumer.py serving/api.py \
-  | "${SSH[@]}" "rm -rf ~/serving-src && mkdir -p ~/serving-src && tar -C ~/serving-src -xf -"
-"${SSH[@]}" "$KUBECTL create configmap weather-serving-code \
-    --namespace weather-pipeline \
-    --from-file=consumer.py=/home/ubuntu/serving-src/serving/consumer.py \
-    --from-file=api.py=/home/ubuntu/serving-src/serving/api.py \
-    --dry-run=client -o yaml | $KUBECTL apply -f -"
-
-echo "== Deployments + Service =="
-"${SSH[@]}" "$KUBECTL apply -f -" < "$DIR/k8s-deployment.yaml"
-
-echo "== Restart to pick up the current code =="
-"${SSH[@]}" "$KUBECTL rollout restart deployment/weather-consumer deployment/weather-api -n weather-pipeline"
-
-echo
-echo "Deployed. Containers pip-install on start (~30s). Then:"
-echo "  curl http://$NODE_IP:30080/api/stations"
+apply_manifest "$REPO_ROOT/serving/k8s-deployment.yaml"
+kube rollout restart deployment/weather-engine deployment/weather-api -n "$NAMESPACE"

@@ -8,7 +8,10 @@ resource "aws_key_pair" "weather_pipeline" {
 }
 
 resource "aws_security_group" "weather_pipeline" {
-  name        = "weather-pipeline-sg"
+  name = "weather-pipeline-sg"
+  # Historical wording, kept on purpose: description is ForceNew, and
+  # replacing a security group attached to the running node fails. The
+  # rules below are what matter (SSH + HTTPS; Kafka is no longer exposed).
   description = "SSH + external Kafka listener for the weather pipeline k3s node"
 
   ingress {
@@ -19,21 +22,21 @@ resource "aws_security_group" "weather_pipeline" {
     cidr_blocks = [var.allowed_ssh_cidr]
   }
 
+  # Traefik (bundled with k3s) serves the API and WebSocket over TLS. Port 80
+  # is needed for Let's Encrypt's HTTP-01 challenge. Kafka and Redis stay
+  # cluster-internal; the dashboard only ever talks to 443.
   ingress {
-    description = "Kafka external listener (temporary open - see spec Networking follow-up)"
-    from_port   = var.kafka_external_nodeport
-    to_port     = var.kafka_external_nodeport
+    description = "HTTP for ACME challenges"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    # Read-only API consumed by the Vercel dashboard, which has no fixed egress
-    # range to narrow this to. Serves only derived weather readings, no secrets
-    # and no writes.
-    description = "Weather API NodePort for the dashboard"
-    from_port   = var.api_nodeport
-    to_port     = var.api_nodeport
+    description = "HTTPS API and WebSocket for the dashboard"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -52,7 +55,11 @@ resource "aws_security_group" "weather_pipeline" {
   }
 }
 
+# On demand: `./deploy.sh --down` sets node_enabled=false, which destroys the
+# node (and its root volume) but keeps the Elastic IP, S3 bucket and IAM user,
+# so the API address and the data lake survive between sessions.
 resource "aws_instance" "weather_pipeline" {
+  count                  = var.node_enabled ? 1 : 0
   ami                    = data.aws_ami.ubuntu_2204.id
   instance_type          = var.instance_type
   key_name               = aws_key_pair.weather_pipeline.key_name
@@ -80,14 +87,26 @@ resource "aws_instance" "weather_pipeline" {
   }
 }
 
+moved {
+  from = aws_instance.weather_pipeline
+  to   = aws_instance.weather_pipeline[0]
+}
+
+# Kept while the node is down (~$3.65/month) so the DuckDNS name and the
+# dashboard's API host never change.
 resource "aws_eip" "weather_pipeline" {
-  domain   = "vpc"
-  instance = aws_instance.weather_pipeline.id
+  domain = "vpc"
 
   tags = {
     Project = "weather-pipeline"
     Name    = "weather-pipeline-eip"
   }
+}
+
+resource "aws_eip_association" "weather_pipeline" {
+  count         = var.node_enabled ? 1 : 0
+  instance_id   = aws_instance.weather_pipeline[0].id
+  allocation_id = aws_eip.weather_pipeline.id
 }
 
 data "aws_caller_identity" "current" {}

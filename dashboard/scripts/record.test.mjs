@@ -1,0 +1,40 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { select } from "./record.mjs";
+
+test("keeps the first snapshot, incidents and spaced ticks; drops pings; rebases time", () => {
+  const frames = [
+    [100, { type: "ping" }],
+    [200, { type: "snapshot", n: 1 }],
+    [1200, { type: "tick", n: 2 }],
+    [3200, { type: "tick", n: 3 }],
+    [3300, { type: "incident", n: 4 }],
+    [7000, { type: "tick", n: 5 }],
+    [8000, { type: "snapshot", n: 6 }],
+    [9000, { type: "mode", n: 7 }],
+  ];
+  const kept = select(frames, 5000);
+  assert.deepEqual(kept.map(([, m]) => m.n), [1, 2, 4, 5, 7]);
+  assert.deepEqual(kept.map(([ms]) => ms), [0, 1000, 3100, 6800, 8800]);
+});
+
+test("a recording without a snapshot is empty", () => {
+  assert.deepEqual(select([[0, { type: "tick" }]]), []);
+});
+
+test("deltas from dropped ticks are carried into the next kept tick", () => {
+  const frames = [
+    [0, { type: "snapshot", locations: {}, routes: {} }],
+    [1000, { type: "tick", kpis: { k: 1 }, routes: { A: { status: "high" } }, locations: {}, hubs: {}, removed: { locations: [], routes: [], hubs: [] } }],
+    [2000, { type: "tick", kpis: { k: 2 }, routes: { B: { status: "critical" } }, locations: { X: { score: 1 } }, hubs: {}, removed: { locations: ["Y"], routes: [], hubs: [] } }],
+    [9000, { type: "tick", kpis: { k: 3 }, routes: {}, locations: { X: { score: 2 } }, hubs: {}, removed: { locations: [], routes: [], hubs: [] } }],
+  ];
+  const kept = select(frames, 5000);
+  assert.equal(kept.length, 3); // snapshot, tick@1000, tick@9000 (carrying tick@2000)
+  const last = kept[2][1];
+  assert.deepEqual(Object.keys(last.routes), ["B"]);
+  assert.equal(last.locations.X.score, 2);
+  assert.deepEqual(last.removed.locations, ["Y"]);
+  assert.equal(last.kpis.k, 3);
+});

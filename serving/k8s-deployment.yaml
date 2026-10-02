@@ -1,51 +1,77 @@
-# consumer.py and api.py ship as a ConfigMap built from the real source files
-# (see deploy.sh), so there is no image to build or push. Both run on the stock
-# python image and pip-install their handful of deps at startup.
+# Engine and API ship as ConfigMaps built from the real source files (see
+# deploy.sh): weatherops-lib is the shared package, serving-code this
+# directory. The trained forecast models (too big for a ConfigMap) are copied
+# to the node and mounted from there; without them the engine runs with no
+# forecasts. Both run on the stock python image and pip-install at start.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: weather-consumer
+  name: weather-engine
   namespace: weather-pipeline
   labels:
-    app: weather-consumer
+    app: weather-engine
 spec:
   replicas: 1
+  strategy:
+    # Incidents live in this process; two engines would open them twice.
+    type: Recreate
   selector:
     matchLabels:
-      app: weather-consumer
+      app: weather-engine
   template:
     metadata:
       labels:
-        app: weather-consumer
+        app: weather-engine
     spec:
       containers:
-        - name: consumer
+        - name: engine
           image: python:3.12-slim
-          # ponytail: pip at startup costs ~20s per restart and needs the
-          # network. Fine here because Docker Desktop is unavailable to build
-          # an image; bake a real image if restarts ever need to be fast.
+          # ponytail: apt + pip at start costs ~30 s per restart; bake an
+          # image if restarts ever need to be fast. LightGBM needs OpenMP
+          # (libgomp1), which the slim image lacks.
           command: ["sh", "-c"]
           args:
-            - pip install --quiet --no-cache-dir redis kafka-python-ng && python /app/consumer.py
+            - >-
+              apt-get update -qq && apt-get install -y -qq --no-install-recommends libgomp1 >/dev/null &&
+              pip install --quiet --no-cache-dir kafka-python-ng==2.2.3 redis==5.2.1 lightgbm==4.6.0 numpy==2.2.6 &&
+              exec python -m serving.engine
+          workingDir: /app/svc
           env:
+            - name: PYTHONPATH
+              value: /app/lib:/app/svc
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: MODELS_DIR
+              value: /app/models
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: redis-auth
                   key: redis-password
           volumeMounts:
+            - name: lib
+              mountPath: /app/lib/weatherops
             - name: code
-              mountPath: /app
+              mountPath: /app/svc/serving
+            - name: models
+              mountPath: /app/models
           resources:
             requests:
-              memory: "96Mi"
-              cpu: "50m"
+              memory: "256Mi"
+              cpu: "100m"
             limits:
-              memory: "384Mi"
+              memory: "768Mi"
       volumes:
+        - name: lib
+          configMap:
+            name: weatherops-lib
         - name: code
           configMap:
-            name: weather-serving-code
+            name: serving-code
+        - name: models
+          hostPath:
+            path: /home/ubuntu/weatherops-models
+            type: DirectoryOrCreate
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -69,8 +95,13 @@ spec:
           image: python:3.12-slim
           command: ["sh", "-c"]
           args:
-            - pip install --quiet --no-cache-dir redis fastapi uvicorn && uvicorn api:app --host 0.0.0.0 --port 8000 --app-dir /app
+            - >-
+              pip install --quiet --no-cache-dir redis==5.2.1 fastapi==0.115.12 "uvicorn[standard]==0.34.2" &&
+              exec uvicorn serving.api:app --host 0.0.0.0 --port 8000 --app-dir /app/svc
+          workingDir: /app/svc
           env:
+            - name: PYTHONPATH
+              value: /app/lib:/app/svc
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -88,8 +119,10 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 10
           volumeMounts:
+            - name: lib
+              mountPath: /app/lib/weatherops
             - name: code
-              mountPath: /app
+              mountPath: /app/svc/serving
           resources:
             requests:
               memory: "96Mi"
@@ -97,9 +130,12 @@ spec:
             limits:
               memory: "384Mi"
       volumes:
+        - name: lib
+          configMap:
+            name: weatherops-lib
         - name: code
           configMap:
-            name: weather-serving-code
+            name: serving-code
 ---
 apiVersion: v1
 kind: Service
@@ -107,11 +143,12 @@ metadata:
   name: weather-api
   namespace: weather-pipeline
 spec:
-  type: NodePort
+  # Reached through the Traefik ingress (serving/ingress.yaml), or an SSH
+  # tunnel (./deploy.sh --tunnel) before a DuckDNS name exists.
+  type: ClusterIP
   selector:
     app: weather-api
   ports:
     - name: http
       port: 8000
       targetPort: http
-      nodePort: 30080
