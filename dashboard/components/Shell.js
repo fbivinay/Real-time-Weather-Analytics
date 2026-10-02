@@ -104,21 +104,21 @@ function StatusBar() {
       <div className="group">
         <StatusDot status={live.status === "live" || live.status === "polling" ? "ok" : live.status === "offline" ? "down" : "degraded"}
           label={STATUS_WORD[live.status] || live.status} />
-        {ov ? <span className="mono">Sim clock {istDay(ov.sim_time)} · {istHour(ov.sim_time)} IST</span> : null}
-        <span className="badge-demo">Synthetic company data · rainfall replayed from {ov ? new Date(ov.replay?.start).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "Jul 2025"}</span>
+        {ov ? <span className="mono" title="Simulated business time">{istDay(ov.sim_time).replace(/, \d{4}$/, "")} · {istHour(ov.sim_time)} IST</span> : null}
+        <span className="badge-demo" title="ShopFlow India is fictional; rainfall is real, replayed hour by hour">Synthetic data · {ov ? new Date(ov.replay?.start).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "Jul 2025"} rainfall</span>
       </div>
       <div className="group">
         {on ? (
           <>
             <StatusDot status={h.kafka?.status} label="Kafka" />
-            <StatusDot status={h.spark?.status} label={`Spark ${spark.toLowerCase()}`} />
+            <StatusDot status={h.spark?.status} label={spark === "Processing" ? "Spark" : `Spark ${spark.toLowerCase()}`} />
             <StatusDot status={h.api?.status} label="API" />
             <StatusDot status={h.database?.status} label="Database" />
             <StatusDot status={h.stream?.status} label="Stream" />
           </>
         ) : <span>Pipeline status unavailable</span>}
         <span className="mono">{num(stream.events_per_s ?? 0, 1)} ev/s</span>
-        <span title="Last processed event">{lastType ? `last: ${lastType}` : ""}</span>
+        <span title="Last processed event" className="hide-narrow">{lastType ? `last: ${lastType}` : ""}</span>
         <span className="mono" title="Data freshness">{stream.freshness_s != null && live.status === "live" ? ago(stream.freshness_s) : ""}</span>
       </div>
     </div>
