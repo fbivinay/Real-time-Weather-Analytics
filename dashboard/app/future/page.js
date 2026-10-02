@@ -17,7 +17,7 @@ function Timeline({ data, window }) {
   const buckets = useMemo(() => {
     if (!data?.timeline) return [];
     const out = [];
-    for (let i = 0; i < data.timeline.length; i += 2) {
+    for (let i = 0; i < Math.min(window, data.timeline.length); i += 2) {
       const a = data.timeline[i];
       const b = data.timeline[i + 1] || { orders: 0, high_plus: 0, sla_breaches: 0, rain_probability: a.rain_probability, avg_score: 0 };
       const orders = a.orders + b.orders;
@@ -26,12 +26,13 @@ function Timeline({ data, window }) {
         score: orders ? (a.avg_score * a.orders + b.avg_score * b.orders) / orders : 0, idx: i });
     }
     return out;
-  }, [data]);
+  }, [data, window]);
   if (!buckets.length) return <SkeletonRows rows={5} />;
   return (
     <div>
-      <BarChart data={buckets} value={(d) => d.high_plus} label={(d) => istHour(d.hour)} every={3} height={170}
-        format={(v) => num(v)} color={(d) => (d.idx < window ? (d.score >= 50 ? RISK_HEX.High : "#0b0b0c") : "#c9ccd1")}
+      <BarChart data={buckets} value={(d) => d.high_plus} label={(d) => istHour(d.hour)} height={300}
+        every={window <= 12 ? 1 : window <= 24 ? 2 : 3}
+        format={(v) => num(v)} color={(d) => (d.score >= 50 ? RISK_HEX.High : "#0b0b0c")}
         tooltip={(d) => <><div className="t">{istTime(d.hour)} – {istHour(new Date(new Date(d.hour).getTime() + 7.2e6).toISOString())} IST dispatch wave</div>
           {num(d.high_plus)} High/Critical of {num(d.orders)} orders · avg risk {Math.round(d.score)} · ~{num(d.sla)} SLA breaches · rain {pct(d.rain, 0)}</>} />
       <div style={{ display: "grid", gridTemplateColumns: "48px 1fr", gap: 0, alignItems: "center", marginTop: 6 }}>
@@ -43,8 +44,7 @@ function Timeline({ data, window }) {
       </div>
       <div className="legend" style={{ marginTop: 12 }}>
         <span><i style={{ background: RISK_HEX.High }} />Wave averaging High risk</span>
-        <span><i style={{ background: "#0b0b0c" }} />Other waves in the selected window</span>
-        <span><i style={{ background: "#c9ccd1" }} />Beyond the selected window</span>
+        <span><i style={{ background: "#0b0b0c" }} />Other waves</span>
         <span><i style={{ background: RAIN_RAMP[3] }} />Network rain probability</span>
       </div>
     </div>
@@ -59,7 +59,7 @@ function RiskTable({ window }) {
   const [f, setF] = useState({ category: "", city: "", warehouse: "", tier: "", q: "" });
   const [q, setQ] = useState("");
   const query = new URLSearchParams({ window, sort, page, size: 15, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) });
-  const { data, loading, error } = useFetch(`/api/future?${query}`, { refreshMs: 30000 });
+  const { data, loading, error, refreshing } = useFetch(`/api/future?${query}`, { refreshMs: 30000 });
   const t = data?.table;
   const pages = t ? Math.max(1, Math.ceil(t.total / t.size)) : 1;
   const set = (k, v) => { setF((x) => ({ ...x, [k]: v })); setPage(1); };
@@ -91,7 +91,7 @@ function RiskTable({ window }) {
         {error && !t ? <Empty>The order table needs the live backend.</Empty> : null}
         {t ? (
           <>
-            <table className="table">
+            <table className={`table fade${refreshing ? " refreshing" : ""}`}>
               <thead>
                 <tr>
                   <th>Order</th><th>Route</th>
@@ -162,7 +162,7 @@ function Scenario({ window, topCity }) {
     ["Estimated cost", "cost_inr", inr],
   ] : [];
   return (
-    <div className="panel" style={{ position: "sticky", top: 130 }}>
+    <div className="panel">
       <div className="panel-h"><h2>What if we change the operation?</h2></div>
       <div className="panel-b">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
@@ -245,19 +245,17 @@ export default function Future() {
           <Kpi label="High risk" value={s.high} sub="score 50–74" />
           <Kpi label="Critical" value={s.critical} sub="score 75+" hot={s.critical > 0} />
           <Kpi label="Predicted delay" value={s.expected_delay_min} sub="per order" format={(v) => mins(v)} />
-          <Kpi label="Potential SLA breaches" value={s.sla_breaches} sub="expected count" hot={s.sla_breaches > 0} />
+          <Kpi label="SLA breaches" value={s.sla_breaches} sub="expected count" hot={s.sla_breaches > 0} />
         </div>
       ) : <SkeletonRows rows={2} h={60} />}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 400px", gap: 18, marginTop: 18, alignItems: "start" }}>
-        <div className="grid">
-          <div className="panel">
-            <div className="panel-h"><h2>Risk timeline, next 48 h</h2></div>
-            <div className="panel-b"><Timeline data={tl.data} window={window} /></div>
-          </div>
-          <RiskTable window={window} />
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 420px", gap: 18, marginTop: 18, alignItems: "stretch" }}>
+        <div className="panel">
+          <div className="panel-h"><h2>Risk timeline, next {window} h</h2></div>
+          <div className="panel-b"><Timeline data={tl.data} window={window} /></div>
         </div>
         <Scenario window={window} topCity={topCity} />
       </div>
+      <div className="sect"><RiskTable window={window} /></div>
     </main>
   );
 }

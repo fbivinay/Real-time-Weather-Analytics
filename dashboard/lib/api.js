@@ -20,7 +20,37 @@ async function withTimeout(url, opts = {}, ms = 9000) {
   }
 }
 
-export async function getJSON(path, { signal } = {}) {
+// In-flight requests drive the top progress bar; responses are cached so
+// revisiting a page renders instantly while it revalidates.
+const listeners = new Set();
+let inflight = 0;
+function track(delta) {
+  inflight = Math.max(0, inflight + delta);
+  listeners.forEach((fn) => fn(inflight));
+}
+export function onInflight(fn) {
+  listeners.add(fn);
+  fn(inflight);
+  return () => listeners.delete(fn);
+}
+export const cache = new Map();
+
+export async function getJSON(path, opts = {}) {
+  track(1);
+  try {
+    const out = await fetchJSON(path, opts);
+    cache.set(path, out);
+    return out;
+  } finally {
+    track(-1);
+  }
+}
+
+export function prefetch(paths) {
+  paths.forEach((p) => { if (!cache.has(p)) getJSON(p).catch(() => {}); });
+}
+
+async function fetchJSON(path, { signal } = {}) {
   let error;
   if (API_BASE) {
     try {
@@ -44,9 +74,14 @@ export async function getJSON(path, { signal } = {}) {
 
 export async function postJSON(path, body) {
   if (!API_BASE) throw new Error("Scenario runs need the live backend.");
-  const r = await withTimeout(API_BASE + path, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-  }, 20000);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  track(1);
+  try {
+    const r = await withTimeout(API_BASE + path, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    }, 20000);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    track(-1);
+  }
 }

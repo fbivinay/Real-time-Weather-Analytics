@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
 const INDIA = [[68.5, 7.5], [97.2, 35.2]];
+const geojson = {};
+export const loadGeo = (url) => (geojson[url] ||= fetch(url).then((r) => r.json()));
 
 function bbox(geom) {
   let [x0, y0, x1, y1] = [180, 90, -180, -90];
@@ -41,7 +43,9 @@ export default function IndiaMap({ stateColors, cities, routeColors, selected, o
     m.touchZoomRotate.disableRotation();
     map.current = m;
     m.on("load", async () => {
-      const [india, net] = await Promise.all([fetch("/india.geojson").then((r) => r.json()), fetch("/network.geojson").then((r) => r.json())]);
+      const [india0, net0] = await Promise.all([loadGeo("/india.geojson"), loadGeo("/network.geojson")]);
+      const india = structuredClone(india0);
+      const net = structuredClone(net0);
       india.features.forEach((f, i) => { f.id = i; if (f.properties.layer === "state") geo.current.states[f.properties.name] = f; });
       net.features.forEach((f) => { if (f.properties.layer === "route") geo.current.routes[f.properties.id] = f; });
       m.addSource("india", { type: "geojson", data: india });
@@ -82,7 +86,10 @@ export default function IndiaMap({ stateColors, cities, routeColors, selected, o
       m.on("mouseout", () => cb.current.onHover?.(null));
       m.on("click", (e) => {
         const f = m.queryRenderedFeatures(e.point, { layers: pick })[0];
-        if (!f) return;
+        if (!f) {
+          cb.current.onSelect?.(null);      // empty sea or outside India: back to the whole country
+          return;
+        }
         const p = f.properties;
         const kind = { warehouses: "warehouse", hubs: "hub", cities: "city", "routes-hit": "route", "state-fill": "state" }[f.layer.id];
         cb.current.onSelect?.(kind, kind === "state" ? p.name : p.id);

@@ -80,7 +80,7 @@ function Breakdown({ rows, label, onPick }) {
           <tr key={r.id} className={onPick ? "click" : ""} onClick={onPick ? () => onPick(r) : undefined}>
             <td>{onPick ? <span className="link">{r.name || r.id}</span> : r.name || CATEGORY_LABEL[r.id] || r.id}</td>
             <td style={{ width: "30%", minWidth: 170 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 72px", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 96px", gap: 10, alignItems: "center", whiteSpace: "nowrap" }}>
                 <div className="bar"><i style={{ width: `${((r.weather_cost || 0) / max) * 100}%` }} /></div>
                 <span className="num" style={{ textAlign: "right", fontSize: 14.9 }}>{inr(r.weather_cost)}</span>
               </div>
@@ -101,7 +101,7 @@ export default function History() {
   const [metric, setMetric] = useState("weather_cost");
   const opts = useFetch("/api/history/options");
   const qs = new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v))).toString();
-  const { data, loading, error } = useFetch(`/api/history${qs ? `?${qs}` : ""}`);
+  const { data, loading, error, refreshing } = useFetch(`/api/history${qs ? `?${qs}` : ""}`);
   const set = (k, v) => setF(k === null ? {} : (x) => ({ ...x, [k]: v,
     ...(k === "state" ? { city: "", route: "", hub: "" } : {}), ...(k === "city" ? { route: "", hub: "" } : {}) }));
   const t = data?.totals;
@@ -127,8 +127,8 @@ export default function History() {
       {error && !data ? <Empty>History needs the live backend or a demo snapshot.</Empty> : null}
       {t && !t.orders ? <div className="sect panel"><Empty>No orders match these filters.</Empty></div> : null}
       {t && t.orders ? (
-        <>
-          <div className="panel kpis sect" style={{ opacity: loading ? 0.6 : 1, transition: "opacity .2s" }}>
+        <div className={refreshing ? "refreshing" : "fade"}>
+          <div className="panel kpis sect">
             <Kpi label="Orders" value={t.orders} />
             <Kpi label="Weather exposed" value={t.exposed} sub={pct(t.exposed / t.orders)} />
             <Kpi label="Weather affected" value={t.affected} sub={`${pct(t.affected / t.orders)} of orders`} hot />
@@ -160,7 +160,7 @@ export default function History() {
             </div>
           </div>
 
-          <div className="grid sect" style={{ gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)" }}>
+          <div className="grid sect duo">
             <div className="panel">
               <div className="panel-h"><h2>Year over year</h2></div>
               <div className="panel-b"><YearTable rows={data.yearly} /></div>
@@ -200,7 +200,7 @@ export default function History() {
             </div>
           </div>
 
-          <div className="grid sect" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
+          <div className="grid sect">
             <div className="panel">
               <div className="panel-h"><h2>By {geo.level}</h2></div>
               <div className="panel-b"><Breakdown rows={geo.rows} label={geo.level[0].toUpperCase() + geo.level.slice(1)} onPick={geo.level === "route" ? null : pickGeo} /></div>
@@ -210,7 +210,7 @@ export default function History() {
               <div className="panel-b"><Breakdown rows={data.categories} label="Category" /></div>
             </div>
           </div>
-        </>
+        </div>
       ) : null}
     </main>
   );
