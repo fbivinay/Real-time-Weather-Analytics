@@ -27,7 +27,7 @@ CHANNEL = "weatherops:events"
 PING_S = 20
 RANK = {"ok": 0, "degraded": 1, "down": 2}
 KINDS = ("state", "city", "warehouse", "hub", "route")
-CACHE_S = 60
+CACHE_S = 300          # history only moves when the engine refreshes the monthly roll-up (5 min)
 
 
 def _loads(value):
@@ -147,9 +147,20 @@ def create_app(r, connect, hourly, redis_async=None, broadcaster=None):
     broadcaster = broadcaster or Broadcaster()
     cache = TTLCache(CACHE_S)
 
+    def warm():
+        # The first History / Map visit should not pay for the aggregate queries.
+        try:
+            cache.get(("hist", ()), lambda: {"filters": {}, **db(q.history, {})})
+            cache.get("structural", lambda: db(q.structural_impact))
+            cache.get("options", lambda: db(q.history_options))
+        except Exception:
+            log.exception("cache warm-up failed; first requests will compute")
+
     @asynccontextmanager
     async def lifespan(_app):
         task = asyncio.create_task(relay(redis_async, broadcaster)) if redis_async is not None else None
+        if redis_async is not None:
+            asyncio.get_running_loop().run_in_executor(None, warm)
         yield
         if task:
             task.cancel()
