@@ -4,7 +4,7 @@
 // demo snapshot - when the stream is down.
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import { getJSON, WS_URL } from "./api";
+import { cache, getJSON, WS_URL } from "./api";
 
 const LiveCtx = createContext(null);
 
@@ -95,22 +95,30 @@ export function useLive() {
 
 // One-shot GET with demo fallback; re-runs when `path` changes.
 export function useFetch(path, { refreshMs } = {}) {
-  const [res, setRes] = useState({ data: null, source: null, error: null, loading: true });
+  const initial = () => {
+    const hit = path && cache.get(path);
+    return hit ? { data: hit.data, source: hit.source, error: null, loading: false, refreshing: true }
+      : { data: null, source: null, error: null, loading: true, refreshing: false };
+  };
+  const [res, setRes] = useState(initial);
   useEffect(() => {
     if (!path) return undefined;
     const ctl = new AbortController();
     let t;
-    async function run(first) {
-      if (first) setRes((r) => ({ ...r, loading: true, error: null }));
+    const hit = cache.get(path);
+    // Keep showing what we have (dimmed) while the new view loads.
+    setRes((r) => (hit ? { data: hit.data, source: hit.source, error: null, loading: false, refreshing: true }
+      : { ...r, loading: !r.data, refreshing: !!r.data, error: null }));
+    async function run() {
       try {
         const out = await getJSON(path, { signal: ctl.signal });
-        setRes({ data: out.data, source: out.source, error: null, loading: false });
+        setRes({ data: out.data, source: out.source, error: null, loading: false, refreshing: false });
       } catch (e) {
-        if (!ctl.signal.aborted) setRes((r) => ({ ...r, error: e, loading: false }));
+        if (!ctl.signal.aborted) setRes((r) => ({ ...r, error: e, loading: false, refreshing: false }));
       }
-      if (refreshMs && !ctl.signal.aborted) t = setTimeout(() => run(false), refreshMs);
+      if (refreshMs && !ctl.signal.aborted) t = setTimeout(run, refreshMs);
     }
-    run(true);
+    run();
     return () => { ctl.abort(); clearTimeout(t); };
   }, [path, refreshMs]);
   return res;

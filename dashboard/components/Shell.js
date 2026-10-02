@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import { getJSON } from "../lib/api";
+import { getJSON, onInflight, prefetch } from "../lib/api";
 import { ago, istDay, istHour, num } from "../lib/format";
 import { LiveProvider, useLive } from "../lib/live";
 import OrderDrawer from "./OrderDrawer";
@@ -91,6 +91,56 @@ function Search({ onClose }) {
 
 const STATUS_WORD = { live: "Live", polling: "Live (polling)", reconnecting: "Reconnecting…", connecting: "Connecting…", offline: "Demo snapshot" };
 
+// Thin bar under the header while any request is in flight.
+function TopProgress() {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let t;
+    return onInflight((n) => {
+      clearTimeout(t);
+      // Short requests never flash the bar; it hides a beat after the last one ends.
+      t = setTimeout(() => setBusy(n > 0), n > 0 ? 120 : 250);
+    });
+  }, []);
+  return <div className={`topprogress${busy ? " on" : ""}`} aria-hidden="true"><i /></div>;
+}
+
+// Opening splash: holds ~2.5 s (or until the first live data arrives, max 4 s)
+// while every page's data is prefetched, then fades away.
+function Splash() {
+  const live = useLive();
+  const [phase, setPhase] = useState("show");
+  const started = useRef(0);
+  useEffect(() => {
+    started.current = performance.now();
+    prefetch(["/api/map?mode=impact", "/api/future/timeline", "/api/history", "/api/history/options",
+      "/api/future?window=24&sort=score&page=1&size=15"]);
+    const max = setTimeout(() => setPhase("hide"), 4000);
+    return () => clearTimeout(max);
+  }, []);
+  useEffect(() => {
+    if (phase !== "show" || !live.overview) return undefined;
+    const wait = Math.max(0, 2400 - (performance.now() - started.current));
+    const t = setTimeout(() => setPhase("hide"), wait);
+    return () => clearTimeout(t);
+  }, [live.overview, phase]);
+  useEffect(() => {
+    if (phase !== "hide") return undefined;
+    const t = setTimeout(() => setPhase("gone"), 650);
+    return () => clearTimeout(t);
+  }, [phase]);
+  if (phase === "gone") return null;
+  return (
+    <div className={`splash${phase === "hide" ? " out" : ""}`} aria-label="Loading WeatherOps">
+      <div className="splash-inner">
+        <Mark />
+        <div className="splash-name">WeatherOps</div>
+        <div className="splash-bar"><i /></div>
+      </div>
+    </div>
+  );
+}
+
 function StatusBar() {
   const live = useLive();
   const h = live.health?.components || {};
@@ -152,6 +202,7 @@ function Chrome({ children }) {
           </div>
         </div>
         <StatusBar />
+        <TopProgress />
       </header>
       {stale ? (
         <div style={{ padding: "0 32px" }}>
@@ -169,7 +220,6 @@ function Chrome({ children }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 16px", alignContent: "start" }}>
           <span>Pipeline</span><span>Event stream → Kafka → Spark Structured Streaming → Postgres / Redis → FastAPI → WebSocket</span>
-          <span>Risk model</span><span>Additive, explained score + logistic SLA-breach probability fitted on delivery history</span>
           <span>Source</span><a className="link" href="https://github.com/fbivinay/Real-time-Weather-Analytics">github.com/fbivinay/Real-time-Weather-Analytics</a>
         </div>
       </footer>
@@ -203,6 +253,7 @@ export default function Shell({ children }) {
   return (
     <LiveProvider>
       <UIProvider>
+        <Splash />
         <Chrome>{children}</Chrome>
         <div className="gate">
           <div>

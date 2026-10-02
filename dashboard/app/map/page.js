@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import IndiaMap from "../../components/IndiaMap";
+import IndiaMap, { loadGeo } from "../../components/IndiaMap";
 import LocationPanel from "../../components/LocationPanel";
 import { Empty, RiskPill, SkeletonRows } from "../../components/ui";
 import { MONTHS, mins, num, pct } from "../../lib/format";
@@ -13,7 +13,7 @@ import { category, IMPACT_RAMP, IMPACT_STOPS, impactColor, RAIN_RAMP, RAIN_STOPS
 function useNetwork() {
   const [net, setNet] = useState(null);
   useEffect(() => {
-    fetch("/network.geojson").then((r) => r.json()).then((g) => {
+    loadGeo("/network.geojson").then((g) => {
       const by = { city: {}, warehouse: {}, hub: {}, route: {} };
       g.features.forEach((f) => { by[f.properties.layer][f.properties.id] = { ...f.properties, coords: f.geometry.coordinates }; });
       setNet(by);
