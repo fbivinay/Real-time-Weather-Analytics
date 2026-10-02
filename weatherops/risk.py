@@ -1,184 +1,96 @@
-"""0-100 weather risk for logistics operations.
+"""Future-order delivery risk: an additive, explainable 0-100 score.
 
-Each hazard gets a 0-1 sub-score by linear interpolation between anchors
-taken from IMD categories (heavy rain, cyclone wind classes, heatwave,
-dense fog). Sub-scores combine as a probabilistic OR, so two moderate
-hazards compound: rain 0.5 and wind 0.5 make 0.75. Conditions beyond the
-city's own 95th percentile for the month score 15% higher (infrastructure
-is built for what is normal there), and a forecast can raise today's score
-early. All anchors live in ANCHORS - the calibration knob.
+Every point is attributed to one named contributor, each with a fixed cap, so
+an analyst can read why an order is risky ("rainfall severity +24, route
+history +15 ..."). SLA breach probability comes from a logistic regression
+fitted on the synthetic delivery history (see seed job).
 """
 import math
-from datetime import timedelta
 
-ANCHORS = {
-    "rain_intensity": ((2.5, 0.0), (7.5, 0.3), (15, 0.5), (30, 0.775), (50, 1.0)),   # mm/h
-    "rain_accum": ((20, 0.0), (70, 0.5), (100, 0.775), (150, 1.0)),                 # mm
-    "gust": ((40, 0.0), (50, 0.25), (62, 0.5), (89, 0.775), (118, 1.0)),            # km/h
-    "heat": ((38, 0.0), (41, 0.3), (44, 0.5), (48, 0.775), (52, 1.0)),              # heat index C
-    "visibility": ((50, 1.0), (200, 0.775), (400, 0.5), (1000, 0.2), (2000, 0.0)),  # m
-}
-CATEGORIES = ((75, "critical"), (50, "high"), (25, "medium"), (0, "low"))
-RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-CLIMATOLOGY_BOOST = 1.15
-RECENT = timedelta(minutes=15)
-ACCUMULATION = timedelta(hours=3)
-ANTECEDENT_WEIGHT = 0.25
-INPUT_KEYS = ("rain_mmph", "rain_accum_mm", "gust_kmph", "temperature_c", "humidity_pct", "visibility_m")
+import numpy as np
 
+from weatherops import company as co
+from weatherops import delay
 
-def interp(x, anchors):
-    if x <= anchors[0][0]:
-        return anchors[0][1]
-    for (x0, y0), (x1, y1) in zip(anchors, anchors[1:]):
-        if x <= x1:
-            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-    return anchors[-1][1]
-
-
-def heat_index_c(temp_c, rh):
-    """NOAA/NWS heat index (Rothfusz regression with its adjustments)."""
-    f = temp_c * 9 / 5 + 32
-    hi = 0.5 * (f + 61 + (f - 68) * 1.2 + rh * 0.094)
-    if (hi + f) / 2 >= 80:
-        hi = (-42.379 + 2.04901523 * f + 10.14333127 * rh - 0.22475541 * f * rh
-              - 0.00683783 * f * f - 0.05481717 * rh * rh + 0.00122874 * f * f * rh
-              + 0.00085282 * f * rh * rh - 0.00000199 * f * f * rh * rh)
-        if rh < 13 and 80 <= f <= 112:
-            hi -= ((13 - rh) / 4) * math.sqrt((17 - abs(f - 95)) / 17)
-        elif rh > 85 and 80 <= f <= 87:
-            hi += ((rh - 85) / 10) * ((87 - f) / 5)
-    return (hi - 32) * 5 / 9
+CAPS = {"rainfall": 30, "route_history": 20, "exposure": 15, "load": 10,
+        "timing": 8, "sla": 12, "performance": 5}
+LABELS = {"rainfall": "Rainfall severity", "route_history": "Historical route impact",
+          "exposure": "Route exposure", "load": "Warehouse load", "timing": "Delivery timing",
+          "sla": "SLA tightness", "performance": "Route on-time history"}
+EDGES = ((75, "Critical"), (50, "High"), (25, "Medium"))
+IST_HOURS = 5.5
 
 
 def category(score):
-    return next(name for floor, name in CATEGORIES if score >= floor)
+    return next((name for edge, name in EDGES if score >= edge), "Low")
 
 
-def _heat_input(inp):
-    t, rh = inp.get("temperature_c"), inp.get("humidity_pct")
-    if t is None:
-        return None
-    return t if rh is None else heat_index_c(t, rh)
+def features(route, tier, wx):
+    """[1, slack ratio, sensitivity x expected severity, distance / 1000 km]."""
+    normal = co.normal_eta_h(route)
+    slack = co.promised_h(route, tier) - normal
+    return [1.0, slack / normal, route.sensitivity * wx["weight"], route.distance_km / 1000]
 
 
-def factors(inp):
-    rain, accum = inp.get("rain_mmph"), inp.get("rain_accum_mm")
-    gust, vis, heat = inp.get("gust_kmph"), inp.get("visibility_m"), _heat_input(inp)
-    return {
-        "rain": max(0.0 if rain is None else interp(rain, ANCHORS["rain_intensity"]),
-                    0.0 if accum is None else interp(accum, ANCHORS["rain_accum"])),
-        "wind": 0.0 if gust is None else interp(gust, ANCHORS["gust"]),
-        "heat": 0.0 if heat is None else interp(heat, ANCHORS["heat"]),
-        "fog": 0.0 if vis is None else interp(vis, ANCHORS["visibility"]),
+def breach_probability(coefs, x):
+    z = sum(c * v for c, v in zip(coefs, x))
+    return 1 / (1 + math.exp(-max(-30, min(30, z))))
+
+
+def fit_logistic(X, y, iters=25):
+    """Newton / IRLS; returns the coefficient vector."""
+    X = np.asarray(X, float)
+    y = np.asarray(y, float)
+    w = np.zeros(X.shape[1])
+    for _ in range(iters):
+        p = 1 / (1 + np.exp(-np.clip(X @ w, -30, 30)))
+        grad = X.T @ (y - p)
+        hess = X.T @ (X * (p * (1 - p))[:, None]) + 1e-6 * np.eye(X.shape[1])
+        step = np.linalg.solve(hess, grad)
+        w += step
+        if np.abs(step).max() < 1e-8:
+            break
+    return w
+
+
+def assess(route, tier, dispatch, wx, hist, wh_exposed_share, coefs):
+    """wx: delay.exposure(...) of this trip; hist: {class: {delay_ratio, on_time}} for the route."""
+    probs = wx["probs"]
+    normal = co.normal_eta_h(route)
+    slack_h = co.promised_h(route, tier) - normal
+    exp_delay_h = delay.expected_delay_h(route, probs)
+    wet = max(("rain", "heavy", "extreme"), key=lambda c: probs[c])
+    arrival_ist = (dispatch.hour + IST_HOURS + normal) % 24
+    evening = arrival_ist >= 17 or arrival_ist < 6
+
+    raw = {
+        "rainfall": CAPS["rainfall"] * wx["weight"],
+        "route_history": CAPS["route_history"] * wx["p_rain"] * min(1.0, hist[wet]["delay_ratio"] / 0.5),
+        "exposure": CAPS["exposure"] * wx["exposed_share"] * (0.5 + 0.5 * min(1.0, normal / 10)),
+        "load": CAPS["load"] * min(1.0, wh_exposed_share / 0.6),
+        "timing": CAPS["timing"] * wx["delivery_p_rain"] * (1.0 if evening else 0.6),
+        "sla": CAPS["sla"] * min(1.0, exp_delay_h / slack_h) if slack_h > 0 else CAPS["sla"],
+        "performance": CAPS["performance"] * min(1.0, max(0.0, 1 - hist["none"]["on_time"]) / 0.25),
     }
-
-
-def _combine(f):
-    return 1 - math.prod(1 - s for s in f.values())
-
-
-def _dominant(f):
-    hazard = max(f, key=f.get)
-    return hazard if f[hazard] > 0 else None
-
-
-def _beyond_normal(hazard, inp, clim):
-    if not clim or hazard is None:
-        return False
-    if hazard == "rain":
-        value, limit = inp.get("rain_mmph"), clim.get("rain_p95")
-    elif hazard == "wind":
-        value, limit = inp.get("gust_kmph"), clim.get("gust_p95")
-    elif hazard == "heat":
-        value, limit = _heat_input(inp), clim.get("heat_p95")
-    else:
-        value, limit = clim.get("vis_p5"), inp.get("visibility_m")   # lower visibility is worse
-    return value is not None and limit is not None and value > limit
-
-
-def _hazard_level(inp, clim):
-    f = factors(inp)
-    dominant = _dominant(f)
-    unusual = _beyond_normal(dominant, inp, clim)
-    h = _combine(f) * (CLIMATOLOGY_BOOST if unusual else 1.0)
-    return f, dominant, unusual, round(100 * min(h, 1.0))
-
-
-def assess(inputs, clim=None, forecast_inputs=None):
-    """Observed risk. A forecast never raises the score - incidents follow
-    what is happening - but marks the location `developing` when the +60
-    min category is worse, which drives pre-alerts instead."""
-    f, hazard, unusual, score = _hazard_level(inputs, clim)
-    developing, fc_score, fc_category = False, None, None
-    if forecast_inputs:
-        _, fc_hazard, _, fc_score = _hazard_level(forecast_inputs, clim)
-        fc_category = category(fc_score)
-        developing = RANK[fc_category] > RANK[category(score)]
-        if hazard is None and developing:
-            hazard = fc_hazard
+    details = {
+        "rainfall": f"{wx['expected_class']} rain expected on the trip ({round(wx['p_rain'] * 100)}% chance of rain)",
+        "route_history": f"{route.code} historically runs {round(hist[wet]['delay_ratio'] * 100)}% slower in {wet} rain",
+        "exposure": f"{round(wx['exposed_share'] * 100)}% of the {wx['hours']} h trip under likely rain",
+        "load": f"{round(wh_exposed_share * 100)}% of this warehouse's upcoming orders are weather-exposed",
+        "timing": f"arrives around {int(arrival_ist):02d}:00 IST" + (" (evening last mile)" if evening else ""),
+        "sla": f"expected delay {round(exp_delay_h * 60)} min against {round(slack_h * 60)} min of SLA slack",
+        "performance": f"{round(hist['none']['on_time'] * 100)}% on time in dry weather",
+    }
+    contributions = [{"key": k, "label": LABELS[k], "points": round(v, 1), "cap": CAPS[k], "detail": details[k]}
+                     for k, v in raw.items()]
+    contributions.sort(key=lambda c: -c["points"])
+    score = round(min(100.0, sum(raw.values())), 1)
     return {
         "score": score,
         "category": category(score),
-        "hazard": hazard,
-        "factors": {k: round(v, 3) for k, v in f.items()},
-        "inputs": {k: None if inputs.get(k) is None else round(inputs[k], 1) for k in INPUT_KEYS},
-        "unusual": unusual,
-        "developing": developing,
-        "forecast_score": fc_score,
-        "forecast_category": fc_category,
+        "expected_class": wx["expected_class"],
+        "p_rain": wx["p_rain"],
+        "expected_delay_min": round(exp_delay_h * 60),
+        "p_breach": round(breach_probability(coefs, features(route, tier, wx)), 4),
+        "contributions": contributions,
     }
-
-
-def summarize(windows, observed_at, rain_24h=None):
-    """Feature windows (observed_from/observed_to as datetimes) -> risk inputs.
-
-    'Recent' means windows ending in the last 15 observed minutes, or at least
-    the latest one: at 120x replay a single 30 s window spans an observed hour.
-    """
-    if not windows:
-        return {k: None for k in INPUT_KEYS}
-    ws = sorted(windows, key=lambda w: w["observed_to"])
-    latest = ws[-1]
-    recent = [w for w in ws if w["observed_to"] >= observed_at - RECENT] or [latest]
-
-    def values(key, rows):
-        return [w[key] for w in rows if w.get(key) is not None]
-
-    rain = values("rain_avg", recent)
-    gust = values("gust_max", recent)
-    vis = values("visibility_min", recent)
-
-    start = observed_at - ACCUMULATION
-    accum, prev = 0.0, None
-    for w in ws:
-        to = w["observed_to"]
-        if prev is not None and w.get("rain_avg") is not None:
-            seg_start = max(prev, start)
-            if to > seg_start:
-                accum += w["rain_avg"] * min(1.0, (to - seg_start).total_seconds() / 3600)
-        prev = to
-    if rain_24h is None:
-        antecedent = values("rain_24h", ws)
-        rain_24h = antecedent[-1] if antecedent else None
-    if rain_24h is not None:
-        accum += ANTECEDENT_WEIGHT * rain_24h
-
-    return {
-        "rain_mmph": sum(rain) / len(rain) if rain else None,
-        "rain_accum_mm": accum,
-        "gust_kmph": max(gust) if gust else None,
-        "temperature_c": latest.get("temp_avg"),
-        "humidity_pct": latest.get("humidity_avg"),
-        "visibility_m": min(vis) if vis else None,
-    }
-
-
-def load_climatology(path=None):
-    """city_id -> month ("1".."12") -> percentiles, from ml/climatology.py.
-    Missing file means no climatology: the boost simply never applies."""
-    import json
-    from pathlib import Path
-
-    path = Path(path) if path else Path(__file__).with_name("climatology.json")
-    return json.loads(path.read_text()) if path.exists() else {}
