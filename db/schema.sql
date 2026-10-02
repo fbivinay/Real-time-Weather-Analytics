@@ -90,9 +90,10 @@ CREATE TABLE IF NOT EXISTS order_items (
 -- Clean event log written by Spark (foreachBatch JDBC append). No key: the
 -- stream is deduplicated upstream, and a late duplicate must not fail a batch.
 CREATE TABLE IF NOT EXISTS delivery_events (
-  event_id text NOT NULL, type text NOT NULL, sim_time timestamptz NOT NULL,
+  event_id text NOT NULL, type text NOT NULL, sim_time timestamptz NOT NULL, emitted_at timestamptz,
   order_id text, city_id text, route_id text, payload text, kafka_ts timestamptz
 );
+ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS emitted_at timestamptz;
 CREATE INDEX IF NOT EXISTS delivery_events_order ON delivery_events (order_id);
 CREATE INDEX IF NOT EXISTS delivery_events_time ON delivery_events (sim_time);
 
@@ -127,6 +128,18 @@ CREATE TABLE IF NOT EXISTS history_daily (
 CREATE INDEX IF NOT EXISTS history_daily_route ON history_daily (route_id, date);
 CREATE INDEX IF NOT EXISTS history_daily_category ON history_daily (category_id, date);
 CREATE INDEX IF NOT EXISTS history_daily_severity ON history_daily (severity, date);
+
+-- Monthly roll-up the History page and the map read (history_daily is ~0.8 M rows;
+-- this is ~50 k). Refreshed by the seed job and by the engine every few minutes.
+CREATE MATERIALIZED VIEW IF NOT EXISTS history_monthly AS
+SELECT date_trunc('month', date)::date AS month, route_id, category_id, severity,
+       sum(orders)::bigint AS orders, sum(exposed)::bigint AS exposed, sum(affected)::bigint AS affected,
+       sum(delayed)::bigint AS delayed, sum(sla_breaches)::bigint AS sla_breaches,
+       sum(delay_min_sum)::double precision AS delay_min_sum, sum(cost_transport)::double precision AS cost_transport,
+       sum(cost_reship)::double precision AS cost_reship, sum(cost_sla)::double precision AS cost_sla,
+       min(date) AS first_day, max(date) AS last_day
+FROM history_daily GROUP BY 1, 2, 3, 4;
+CREATE UNIQUE INDEX IF NOT EXISTS history_monthly_key ON history_monthly (month, route_id, category_id, severity);
 
 CREATE OR REPLACE VIEW weather_impact AS
 SELECT route_id, severity, count(DISTINCT date) AS days, sum(orders) AS orders, sum(exposed) AS exposed,

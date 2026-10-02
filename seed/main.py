@@ -103,6 +103,7 @@ def main():
         cur.execute("TRUNCATE orders, order_items, delivery_predictions, delivery_events, stream_metrics")
         cur.execute("INSERT INTO seed_info VALUES ('version', %s), ('seeded_at', now()::text) "
                     "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (SEED_VERSION,))
+        cur.execute("REFRESH MATERIALIZED VIEW history_monthly")
         cur.execute("ANALYZE")
     log.info("seed complete")
 

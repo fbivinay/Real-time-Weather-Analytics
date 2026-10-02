@@ -233,3 +233,38 @@ def vehicles(seed=8):
         out += [{"id": f"VAN-{h.city_id}-{i + 1:02d}", "type": rand.choice(("van", "van", "bike")),
                  "base_id": h.id, "capacity": 40} for i in range(n)]
     return out
+
+
+def to_geojson(network=NETWORK):
+    """Warehouses, delivery hubs and routes (polylines through the cities a
+    route passes) for the dashboard map."""
+    def point(lat, lon):
+        return {"type": "Point", "coordinates": [round(lon, 4), round(lat, 4)]}
+
+    features = []
+    for w in network.warehouses.values():
+        features.append({"type": "Feature", "geometry": point(w.lat, w.lon), "properties": {
+            "layer": "warehouse", "id": w.id, "name": w.name, "city_id": w.city_id}})
+    for h in network.hubs.values():
+        features.append({"type": "Feature", "geometry": point(h.lat, h.lon), "properties": {
+            "layer": "hub", "id": h.id, "name": h.name, "city_id": h.city_id}})
+    for c in network.cities.values():
+        features.append({"type": "Feature", "geometry": point(c.lat, c.lon), "properties": {
+            "layer": "city", "id": c.id, "name": c.name, "state": c.state, "demand": DEMAND[c.id]}})
+    for r in network.routes.values():
+        w, h = network.warehouses[r.warehouse_id], network.hubs[r.hub_id]
+        mid = [(network.cities[c].lat, network.cities[c].lon) for c in r.cities[1:-1]]
+        coords = [(w.lat, w.lon), *mid, (h.lat, h.lon)]
+        features.append({"type": "Feature", "geometry": {
+            "type": "LineString", "coordinates": [[round(lon, 4), round(lat, 4)] for lat, lon in coords]},
+            "properties": {"layer": "route", "id": r.id, "code": r.code, "role": r.role, "city_id": r.city_id,
+                           "warehouse_id": r.warehouse_id, "distance_km": r.distance_km}})
+    return {"type": "FeatureCollection", "features": features}
+
+
+if __name__ == "__main__":
+    # python -m weatherops.company dashboard/public/network.geojson
+    import json
+    import sys
+    with open(sys.argv[1], "w", encoding="utf-8") as out:
+        json.dump(to_geojson(), out, separators=(",", ":"), ensure_ascii=False)

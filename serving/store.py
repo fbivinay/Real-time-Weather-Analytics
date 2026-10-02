@@ -96,6 +96,11 @@ class Store:
         with self.conn.transaction(), self.conn.cursor() as cur:
             cur.execute("DELETE FROM history_daily WHERE date >= %s", (REPLAY_START[:10],))
             cur.execute("TRUNCATE orders, order_items, delivery_predictions")
+            cur.execute("REFRESH MATERIALIZED VIEW history_monthly")
+
+    def refresh_history(self):
+        with self.conn.transaction(), self.conn.cursor() as cur:
+            cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY history_monthly")
 
     def prune_events(self, keep_hours=2):
         with self.conn.transaction(), self.conn.cursor() as cur:

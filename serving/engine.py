@@ -195,7 +195,8 @@ def main():
             persist(store, engine.ops, result)
             if time.monotonic() > next_prune:
                 store.prune_events()
-                next_prune = time.monotonic() + 600
+                store.refresh_history()      # live days into the History page
+                next_prune = time.monotonic() + 300
         except Exception:
             log.exception("tick failed; retrying next tick")
             try:

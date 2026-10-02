@@ -6,7 +6,7 @@ from weatherops.rainfall import SEASON_OF_MONTH
 
 SEVERITIES = ("none", "rain", "heavy", "extreme")
 SEASON_SQL = "CASE " + " ".join(
-    f"WHEN extract(month FROM h.date) = {m} THEN '{s}'" for m, s in SEASON_OF_MONTH.items()) + " END"
+    f"WHEN extract(month FROM h.month) = {m} THEN '{s}'" for m, s in SEASON_OF_MONTH.items()) + " END"
 WEATHER_COST = "(h.cost_transport + h.cost_reship + h.cost_sla)"
 MEASURES = f"""
   sum(h.orders)::bigint AS orders, sum(h.exposed)::bigint AS exposed, sum(h.affected)::bigint AS affected,
@@ -15,8 +15,8 @@ MEASURES = f"""
   round(sum({WEATHER_COST})::numeric)::float AS weather_cost
 """
 FILTERS = {
-    "year": "extract(year FROM h.date) = %s",
-    "month": "extract(month FROM h.date) = %s",
+    "year": "extract(year FROM h.month) = %s",
+    "month": "extract(month FROM h.month) = %s",
     "state": "c.state = %s",
     "city": "r.city_id = %s",
     "warehouse": "r.warehouse_id = %s",
@@ -25,7 +25,7 @@ FILTERS = {
     "category": "h.category_id = %s",
     "severity": "h.severity = %s",
 }
-FROM = "FROM history_daily h JOIN routes r ON r.id = h.route_id JOIN cities c ON c.id = r.city_id"
+FROM = "FROM history_monthly h JOIN routes r ON r.id = h.route_id JOIN cities c ON c.id = r.city_id"
 
 
 def rows(conn, sql, params=()):
@@ -55,13 +55,13 @@ def history(conn, filters):
     geo_level = ("route", "h.route_id", "r.code") if filters.get("city") else \
         ("city", "r.city_id", "c.name") if filters.get("state") else ("state", "c.state", "c.state")
     return {
-        "totals": one(conn, f"SELECT {MEASURES}, min(h.date) AS first_day, max(h.date) AS last_day {FROM} {w}", p),
-        "monthly": rows(conn, f"SELECT to_char(date_trunc('month', h.date), 'YYYY-MM') AS month, {MEASURES} "
+        "totals": one(conn, f"SELECT {MEASURES}, min(h.first_day) AS first_day, max(h.last_day) AS last_day "
+                            f"{FROM} {w}", p),
+        "monthly": rows(conn, f"SELECT to_char(h.month, 'YYYY-MM') AS month, {MEASURES} "
                               f"{FROM} {w} GROUP BY 1 ORDER BY 1", p),
-        "yearly": rows(conn, f"SELECT extract(year FROM h.date)::int AS year, {MEASURES}, "
-                             f"count(DISTINCT h.date)::int AS days {FROM} {w} GROUP BY 1 ORDER BY 1", p),
-        "seasons": rows(conn, f"SELECT {SEASON_SQL} AS season, {MEASURES}, count(DISTINCT h.date)::int AS days "
-                              f"{FROM} {w} GROUP BY 1", p),
+        "yearly": rows(conn, f"SELECT extract(year FROM h.month)::int AS year, {MEASURES}, "
+                             f"(max(h.last_day) - min(h.first_day) + 1)::int AS days {FROM} {w} GROUP BY 1 ORDER BY 1", p),
+        "seasons": rows(conn, f"SELECT {SEASON_SQL} AS season, {MEASURES} {FROM} {w} GROUP BY 1", p),
         "geography": {"level": geo_level[0], "rows": rows(
             conn, f"SELECT {geo_level[1]} AS id, min({geo_level[2]}) AS name, {MEASURES} {FROM} {w} "
                   f"GROUP BY 1 ORDER BY weather_cost DESC NULLS LAST LIMIT 25", p)},
@@ -71,15 +71,14 @@ def history(conn, filters):
                                f"round((sum(h.delay_min_sum) / nullif(sum(h.exposed), 0))::numeric, 1)::float "
                                f"AS delay_per_exposed_min, "
                                f"round((sum(h.sla_breaches)::numeric / nullif(sum(h.orders), 0)), 4)::float "
-                               f"AS breach_rate, count(DISTINCT (h.date, h.route_id))::int AS route_days "
-                               f"{FROM} {w} GROUP BY 1", p),
+                               f"AS breach_rate {FROM} {w} GROUP BY 1", p),
     }
 
 
 def history_options(conn):
     return {
-        "years": [r["y"] for r in rows(conn, "SELECT DISTINCT extract(year FROM date)::int AS y "
-                                             "FROM history_daily ORDER BY 1")],
+        "years": [r["y"] for r in rows(conn, "SELECT DISTINCT extract(year FROM month)::int AS y "
+                                             "FROM history_monthly ORDER BY 1")],
         "states": [r["state"] for r in rows(conn, "SELECT DISTINCT state FROM cities ORDER BY 1")],
         "cities": rows(conn, "SELECT id, name, state FROM cities ORDER BY name"),
         "warehouses": rows(conn, "SELECT id, name, city_id FROM warehouses ORDER BY name"),
@@ -114,8 +113,8 @@ def structural_impact(conn):
                round((sum(h.delay_min_sum) / nullif(sum(h.orders), 0))::numeric, 2)::float AS delay_per_order_min,
                round((sum(h.sla_breaches)::numeric / nullif(sum(h.orders), 0)), 4)::float AS breach_rate,
                round((sum({WEATHER_COST}) / nullif(sum(h.orders), 0))::numeric, 2)::float AS cost_per_order
-        FROM history_daily h JOIN routes r ON r.id = h.route_id JOIN cities c ON c.id = r.city_id
-        WHERE extract(month FROM h.date) BETWEEN 6 AND 9
+        FROM history_monthly h JOIN routes r ON r.id = h.route_id JOIN cities c ON c.id = r.city_id
+        WHERE extract(month FROM h.month) BETWEEN 6 AND 9
         GROUP BY 1, 2""")
 
 
@@ -123,10 +122,10 @@ def location_history(conn, kind, id_):
     key = {"state": "state", "city": "city", "warehouse": "warehouse", "hub": "hub", "route": "route"}[kind]
     w, p = where({key: id_})
     return {
-        "last_12_months": rows(conn, f"SELECT to_char(date_trunc('month', h.date), 'YYYY-MM') AS month, {MEASURES} "
-                                     f"{FROM} {w} AND h.date >= (SELECT max(date) FROM history_daily) - 365 "
+        "last_12_months": rows(conn, f"SELECT to_char(h.month, 'YYYY-MM') AS month, {MEASURES} {FROM} {w} "
+                                     f"AND h.month > (SELECT max(month) FROM history_monthly) - interval '12 months' "
                                      f"GROUP BY 1 ORDER BY 1", p),
-        "monsoon": one(conn, f"SELECT {MEASURES} {FROM} {w} AND extract(month FROM h.date) BETWEEN 6 AND 9", p),
+        "monsoon": one(conn, f"SELECT {MEASURES} {FROM} {w} AND extract(month FROM h.month) BETWEEN 6 AND 9", p),
     }
 
 
