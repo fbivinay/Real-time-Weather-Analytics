@@ -79,9 +79,15 @@ export default function CountUp() {
       });
     };
     scan();
+    // The opening loader covers the page: count again the moment it lifts.
+    const reveal = () => document.querySelectorAll(`main ${TARGETS.split(",").join(", main ")}`).forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < window.innerHeight) animate(el);
+    });
+    window.addEventListener("weatherops:reveal", reveal);
     const mo = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(scan, 60); });
     mo.observe(document.body, { childList: true, subtree: true });
-    return () => { io.disconnect(); mo.disconnect(); clearTimeout(timer); };
+    return () => { io.disconnect(); mo.disconnect(); clearTimeout(timer); window.removeEventListener("weatherops:reveal", reveal); };
   }, [path]);
   return null;
 }
