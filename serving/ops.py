@@ -174,7 +174,8 @@ class Ops:
 
     def take_dirty(self):
         rows = [self.orders[oid] for oid in self.dirty if oid in self.orders]
-        items, self.new_items = self.new_items, []
+        items = [i for i in self.new_items if i[0] in self.orders]
+        self.new_items = []
         self.dirty = set()
         return rows, items
 
