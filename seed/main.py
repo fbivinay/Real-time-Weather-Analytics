@@ -18,7 +18,7 @@ from weatherops.rainfall import climatology, daily_class, read_daily, season
 from weatherops.replay import REPLAY_START
 
 log = logging.getLogger("seed")
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).absolute().parent.parent   # not resolve(): the Job symlinks code into place
 SEED_VERSION = "1"
 
 

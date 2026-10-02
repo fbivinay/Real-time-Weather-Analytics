@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# WeatherOps on one on-demand k3s node.
+# WeatherOps (ShopFlow India delivery intelligence) on one on-demand k3s node.
 #
-#   ./deploy.sh                       bring everything up (node, Kafka, Redis, cert-manager, apps)
+#   ./deploy.sh                       bring everything up (node, Kafka, Redis, cert-manager, Postgres, apps)
 #   ./deploy.sh --apps                redeploy application code only
-#   ./deploy.sh --live                ingestor on real Open-Meteo data (default)
-#   ./deploy.sh --replay <event> [speed]   replay a historical event, e.g. michaung-2023
-#   ./deploy.sh --sim <scenario> [speed]   synthetic scenario, e.g. storm-chennai
+#   ./deploy.sh --restart-replay      start the simulated operations over from the replay start
 #   ./deploy.sh --tunnel              forward the API to http://localhost:8000 over SSH
 #   ./deploy.sh --status              what is running
 #   ./deploy.sh --down                stop billing for the node; keep IP, S3, IAM
 #   ./deploy.sh --destroy             remove everything (S3 must be emptied first)
 #
-# WEATHEROPS_HOST=<name>.duckdns.org enables the TLS ingress the dashboard uses.
+# WEATHEROPS_HOST=35-170-210-110.sslip.io enables the TLS ingress the dashboard uses.
 # TF_AUTO_APPROVE=1 skips Terraform's confirmation prompt (unattended runs).
 # Every step is idempotent: re-running after a failure resumes.
 set -euo pipefail
@@ -71,20 +69,25 @@ ingress() {
 apps() {
   local ip
   ip="$(node_ip)"
-  say "Ingestor"
-  kube delete deployment weather-generator -n "$NS" --ignore-not-found
-  bash "$REPO_ROOT/ingestor/deploy.sh" "$ip"
+  # The live-weather product's workloads, replaced by the simulator.
+  kube delete deployment weather-ingestor weather-generator weather-consumer -n "$NS" --ignore-not-found
+  say "Postgres"
+  bash "$REPO_ROOT/db/deploy.sh" "$ip"
+  say "Seed (first run builds 4.5 years of history, ~2 min)"
+  bash "$REPO_ROOT/seed/deploy.sh" "$ip"
   say "Spark processor"
   bash "$REPO_ROOT/spark_processor/deploy.sh" "$ip"
   say "Engine + API"
   bash "$REPO_ROOT/serving/deploy.sh" "$ip"
+  say "Simulator"
+  bash "$REPO_ROOT/simulator/deploy.sh" "$ip"
   say "Ingress"
   ingress
 }
 
 topics() {
   # Created here, once, so every app can start in any order.
-  for topic in weather-data weather-quarantine weather-features weather-decisions; do
+  for topic in shopflow-events shopflow-quarantine shopflow-clean shopflow-metrics; do
     kube exec kafka-controller-0 -n "$NS" -- kafka-topics.sh \
       --bootstrap-server localhost:9092 --create --if-not-exists --topic "$topic" \
       --partitions 1 --replication-factor 1 --config retention.ms=86400000
@@ -135,20 +138,20 @@ bring_up() {
   say "Up"
   cat <<EOF
 Node      $ip   (ssh: $(tf output -raw ssh_command))
-API       $([ -n "${WEATHEROPS_HOST:-}" ] && echo "https://$WEATHEROPS_HOST/api/snapshot" || echo "not public - ./deploy.sh --tunnel")
+API       $([ -n "${WEATHEROPS_HOST:-}" ] && echo "https://$WEATHEROPS_HOST/api/health" || echo "not public - ./deploy.sh --tunnel")
 S3        $(tf output -raw s3_bucket_name)
 
 Pods settle in 2-3 minutes (Spark downloads connector jars; Python pods
 pip-install on start). Then:  ./deploy.sh --status
-Switch data:  ./deploy.sh --replay michaung-2023   |   --sim storm-chennai   |   --live
 Stop billing: ./deploy.sh --down
 EOF
 }
 
-set_mode() {
-  local mode=$1 scenario=${2:-} speed=${3:-}
-  kube set env deployment/weather-ingestor -n "$NS" MODE="$mode" SCENARIO="$scenario" REPLAY_SPEED="$speed"
-  echo "Ingestor switched to $mode ${scenario}${speed:+ at ${speed}x}; the engine resets when the new data arrives."
+restart_replay() {
+  # Forget the clock: the simulator backfills two days from the replay start
+  # and the engine resets when it sees simulated time jump back.
+  kube exec statefulset/redis-master -n "$NS" -- sh -c "'REDISCLI_AUTH=\$REDIS_PASSWORD redis-cli DEL sim:clock'"
+  kube rollout restart deployment/shopflow-simulator -n "$NS"
 }
 
 status() {
@@ -191,12 +194,10 @@ destroy() {
 case "${1:-}" in
   "")        bring_up ;;
   --apps)    apps ;;
-  --live)    set_mode live ;;
-  --replay)  set_mode replay "${2:?event id, e.g. michaung-2023}" "${3:-}" ;;
-  --sim)     set_mode sim "${2:?scenario id, e.g. storm-chennai}" "${3:-}" ;;
+  --restart-replay) restart_replay ;;
   --tunnel)  tunnel ;;
   --status)  status ;;
   --down)    down ;;
   --destroy) destroy ;;
-  *)         sed -n '2,15p' "$0" >&2; exit 1 ;;
+  *)         sed -n '2,13p' "$0" >&2; exit 1 ;;
 esac

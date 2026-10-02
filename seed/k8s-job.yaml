@@ -1,0 +1,61 @@
+# One-off seed: schema, ShopFlow master data, 2015-2025 rainfall, synthetic
+# history 2021 -> replay start, route impact, SLA-breach model. Idempotent.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: weatherops-seed
+  namespace: weather-pipeline
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: python:3.12-slim
+          command: ["sh", "-c"]
+          args:
+            - >-
+              pip install --quiet --no-cache-dir numpy==2.2.6 pandas==2.3.3 "psycopg[binary]==3.2.10" &&
+              mkdir -p /work/db && cp /app/schema/schema.sql /work/db/ && ln -s /app/data /work/data &&
+              ln -s /app/lib/weatherops /work/weatherops && ln -s /app/svc/seed /work/seed &&
+              cd /work && exec python -m seed.main
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: PGHOST
+              value: postgres.weather-pipeline.svc.cluster.local
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-auth
+                  key: password
+          volumeMounts:
+            - name: lib
+              mountPath: /app/lib/weatherops
+            - name: code
+              mountPath: /app/svc/seed
+            - name: schema
+              mountPath: /app/schema
+            - name: data
+              mountPath: /app/data
+          resources:
+            requests:
+              memory: "768Mi"
+            limits:
+              memory: "2Gi"
+      volumes:
+        - name: lib
+          configMap:
+            name: weatherops-lib
+        - name: code
+          configMap:
+            name: seed-code
+        - name: schema
+          configMap:
+            name: db-schema
+        - name: data
+          hostPath:
+            path: /home/ubuntu/weatherops-data
+            type: Directory
