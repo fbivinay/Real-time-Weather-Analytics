@@ -76,7 +76,7 @@ Rainfall baseline: `python -m seed.fetch_rain` (≈25 min, Open-Meteo rate limit
 ## Tests
 
 ```bash
-pytest                                   # models, seed, simulator, engine, API (88 tests)
+pytest                                   # models, seed, simulator, engine, API (83 tests; 5 SQL tests need TEST_PG_DSN)
 TEST_PG_DSN="host=... dbname=weatherops ..." pytest serving/tests/test_queries_pg.py   # SQL on live data
 cd dashboard && npm test
 # Spark plans (Python 3.8, in the Spark image):

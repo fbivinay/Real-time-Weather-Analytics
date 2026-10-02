@@ -370,3 +370,4 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 .table.compact th, .table.compact td { padding: 8px 6px; white-space: normal; }
 .table.compact th:first-child, .table.compact td:first-child { width: 40%; padding-left: 0; }
 .table td.nowrap { white-space: nowrap; }
+.filterbar .select { max-width: 168px; text-overflow: ellipsis; }
