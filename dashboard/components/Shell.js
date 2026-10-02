@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { getJSON, onInflight, prefetch } from "../lib/api";
 import { ago, istDay, istHour, num } from "../lib/format";
 import { LiveProvider, useLive } from "../lib/live";
+import CountUp from "./CountUp";
 import OrderDrawer from "./OrderDrawer";
 import { StatusDot } from "./ui";
 
@@ -254,6 +255,7 @@ export default function Shell({ children }) {
     <LiveProvider>
       <UIProvider>
         <Splash />
+        <CountUp />
         <Chrome>{children}</Chrome>
         <div className="gate">
           <div>

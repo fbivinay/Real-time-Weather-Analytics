@@ -1,7 +1,5 @@
 "use client";
 // Small shared pieces: risk pill, animated numbers, bars, skeletons.
-import { useEffect, useRef, useState } from "react";
-
 import { num } from "../lib/format";
 import { category as catOf, RISK_HEX } from "../lib/risk";
 
@@ -14,29 +12,10 @@ export function RiskPill({ score, category }) {
   );
 }
 
-// Tweens to the new value over 450 ms so ticking KPIs read as change, not flicker.
+// Plain formatted number; the site-wide CountUp runs it up from 0 when it comes into view.
 export function Num({ value, format = num, className }) {
-  const [shown, setShown] = useState(value ?? 0);
-  const from = useRef(value ?? 0);
-  useEffect(() => {
-    if (value === null || value === undefined) return undefined;
-    const start = performance.now();
-    const a = from.current;
-    const b = value;
-    if (a === b) return undefined;
-    let raf;
-    const step = (t) => {
-      const k = Math.min(1, (t - start) / 450);
-      const e = 1 - (1 - k) ** 3;
-      setShown(a + (b - a) * e);
-      if (k < 1) raf = requestAnimationFrame(step);
-      else from.current = b;
-    };
-    raf = requestAnimationFrame(step);
-    return () => { cancelAnimationFrame(raf); from.current = b; };
-  }, [value]);
   if (value === null || value === undefined) return <span className={className}>–</span>;
-  return <span className={className}>{format(shown)}</span>;
+  return <span className={className}>{format(value)}</span>;
 }
 
 export function Bar({ value, max = 1, color = "var(--ink)" }) {
