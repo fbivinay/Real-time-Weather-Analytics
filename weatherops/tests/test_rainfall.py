@@ -11,7 +11,7 @@ def test_daily_class_follows_imd_edges(mm, cls):
     assert rf.daily_class(mm) == cls
 
 
-@pytest.mark.parametrize("mmph,cls", [(0.9, "none"), (1.0, "rain"), (7.6, "heavy"), (20, "extreme")])
+@pytest.mark.parametrize("mmph,cls", [(2.4, "none"), (2.5, "rain"), (7.6, "heavy"), (20, "extreme")])
 def test_hourly_class(mmph, cls):
     assert rf.hourly_class(mmph) == cls
 

@@ -127,7 +127,7 @@ def fit_breach_model(seed=0, n=200_000):
     X = np.empty((n, 4))
     y = np.empty(n, bool)
     noise = rng.lognormal(-DELAY_SIGMA ** 2 / 2, DELAY_SIGMA, n)
-    other = rng.exponential(0.35, n)
+    other = rng.exponential(0.12, n)
     for i in range(n):
         route, tier, cls = routes[picks[i]], co.TIERS[tiers[i]], CLASSES[truth[i]]
         probs = forecast_probs(cls, leads[i])
