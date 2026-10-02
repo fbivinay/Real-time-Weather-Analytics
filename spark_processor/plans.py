@@ -1,47 +1,45 @@
 """DataFrame -> DataFrame steps of the streaming job, kept free of sources
 and sinks so the same code runs as a stream in production and as a batch
-job in tests."""
+job in tests. Python 3.8 (Spark image): no 3.9+ syntax here."""
 from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    DoubleType, LongType, StringType, StructField, StructType, TimestampType,
-)
+from pyspark.sql.types import StringType, StructField, StructType, TimestampType
 
-from weatherops.schema import FUTURE_TOLERANCE_S, MEASUREMENTS, RANGES
+from weatherops.events import FUTURE_TOLERANCE_S, NEEDS_CITY, NEEDS_ORDER, TYPES
 
-READING_SCHEMA = StructType([
-    StructField("station_id", StringType()),
-    StructField("kind", StringType()),
-    StructField("source", StringType()),
-    StructField("scenario", StringType()),
-    StructField("seq", LongType()),
-    StructField("event_time", TimestampType()),
-    StructField("observed_at", TimestampType()),
-    StructField("lat", DoubleType()),
-    StructField("lon", DoubleType()),
-    *[StructField(m, DoubleType()) for m in MEASUREMENTS],
+EVENT_SCHEMA = StructType([
+    StructField("event_id", StringType()),
+    StructField("type", StringType()),
+    StructField("sim_time", TimestampType()),
+    StructField("emitted_at", TimestampType()),
+    StructField("order_id", StringType()),
+    StructField("city_id", StringType()),
+    StructField("route_id", StringType()),
+    StructField("payload", StringType()),
 ])
+CLEAN_COLUMNS = ("event_id", "type", "sim_time", "emitted_at", "order_id", "city_id", "route_id", "payload",
+                 "kafka_ts")
 
 
 def parse(kafka_df):
     raw = F.col("value").cast("string")
     return (
         kafka_df.select(raw.alias("raw"), F.col("timestamp").alias("kafka_ts"),
-                        F.from_json(raw, READING_SCHEMA).alias("r"))
-        .select("raw", "kafka_ts", "r.*")
+                        F.from_json(raw, EVENT_SCHEMA).alias("e"))
+        .select("raw", "kafka_ts", "e.*")
     )
 
 
 def reject_reason():
-    """Same rule order as weatherops.schema.validate(); null = valid."""
-    reason = F.when(
-        F.col("station_id").isNull() | (F.col("station_id") == "") | F.col("event_time").isNull(),
-        F.lit("unparseable"),
+    """Same rule order as weatherops.events.validate(); null = valid."""
+    blank = F.col("event_id").isNull() | (F.col("event_id") == "")
+    future = F.current_timestamp() + F.expr("INTERVAL {} SECONDS".format(FUTURE_TOLERANCE_S))
+    return (
+        F.when(blank | F.col("sim_time").isNull() | F.col("emitted_at").isNull(), F.lit("unparseable"))
+        .when(F.col("type").isNull() | ~F.col("type").isin(*TYPES), F.lit("unknown_type"))
+        .when(F.col("type").isin(*NEEDS_ORDER) & F.col("order_id").isNull(), F.lit("missing_order_id"))
+        .when(F.col("type").isin(*NEEDS_CITY) & F.col("city_id").isNull(), F.lit("missing_city_id"))
+        .when(F.col("emitted_at") > future, F.lit("future_timestamp"))
     )
-    for field in MEASUREMENTS:
-        lo, hi = RANGES[field]
-        reason = reason.when((F.col(field) < lo) | (F.col(field) > hi), F.lit(f"{field}_out_of_range"))
-    future = F.current_timestamp() + F.expr(f"INTERVAL {FUTURE_TOLERANCE_S} SECONDS")
-    return reason.when(F.col("event_time") > future, F.lit("future_timestamp"))
 
 
 def with_reject_reason(df):
@@ -50,52 +48,39 @@ def with_reject_reason(df):
 
 def quarantine(df):
     return df.filter(F.col("reject_reason").isNotNull()).select(
-        F.col("reject_reason").alias("reason"),
-        "station_id",
-        "event_time",
-        "kafka_ts",
+        F.col("reject_reason").alias("reason"), "event_id", "type", "kafka_ts",
         F.substring("raw", 1, 1024).alias("raw"),
     )
 
 
-def features(valid_df, window="30 seconds", watermark="15 seconds", delayed_s=10):
-    delay = F.col("kafka_ts").cast("double") - F.col("event_time").cast("double")
-    df = valid_df.withWatermark("event_time", watermark)
+def clean(df, watermark="30 seconds"):
+    """Valid events, each event_id once. The watermark runs on emitted_at (wall
+    clock): simulated time moves 60x and backfills in bursts."""
+    valid = df.filter(F.col("reject_reason").isNull()).withWatermark("emitted_at", watermark)
     # Within-watermark dedup only exists for streams; batch tests use the
     # plain equivalent, and a streaming test covers the real operator.
-    df = (df.dropDuplicatesWithinWatermark(["station_id", "seq"]) if df.isStreaming
-          else df.dropDuplicates(["station_id", "seq"]))
+    valid = (valid.dropDuplicatesWithinWatermark(["event_id"]) if valid.isStreaming
+             else valid.dropDuplicates(["event_id"]))
+    return valid.select(*CLEAN_COLUMNS)
+
+
+def metrics(clean_df, window="30 seconds"):
+    """Per city, per 30 s of wall-clock time: what the operation did."""
+    is_type = lambda t: F.when(F.col("type") == t, 1).otherwise(0)  # noqa: E731
+    delay = F.when(F.col("type") == "DELIVERY_COMPLETED",
+                   F.get_json_object("payload", "$.delay_min").cast("double"))
     return (
-        df
-        .withColumn("delay_s", delay)
-        .groupBy(F.window("event_time", window), "station_id", "kind", "source", "scenario")
+        clean_df.groupBy(F.window("emitted_at", window), F.coalesce("city_id", F.lit("ALL")).alias("city_id"))
         .agg(
-            F.count("*").alias("readings"),
-            F.min("seq").alias("seq_min"),
-            F.max("seq").alias("seq_max"),
-            F.sum(F.when(F.col("delay_s") > delayed_s, 1).otherwise(0)).alias("delayed"),
-            F.max("delay_s").alias("max_delay_s"),
-            F.min("observed_at").alias("observed_from"),
-            F.max("observed_at").alias("observed_to"),
-            F.max("event_time").alias("last_event_at"),
-            F.min("temperature_c").alias("temp_min"),
-            F.avg("temperature_c").alias("temp_avg"),
-            F.max("temperature_c").alias("temp_max"),
-            F.avg("humidity_pct").alias("humidity_avg"),
-            F.avg("rain_mmph").alias("rain_avg"),
-            F.max("rain_mmph").alias("rain_max"),
-            F.avg("wind_kmph").alias("wind_avg"),
-            F.max("gust_kmph").alias("gust_max"),
-            F.min("visibility_m").alias("visibility_min"),
-            F.avg("pressure_hpa").alias("pressure_avg"),
-            F.max("rain_24h_mm").alias("rain_24h"),
+            F.count("*").alias("events"),
+            F.sum(is_type("ORDER_CREATED")).alias("created"),
+            F.sum(is_type("VEHICLE_DISPATCHED")).alias("dispatched"),
+            F.sum(is_type("DELIVERY_COMPLETED")).alias("completed"),
+            F.sum(is_type("DELIVERY_DELAY")).alias("delays"),
+            F.avg(delay).alias("avg_delay_min"),
+            F.max("sim_time").alias("max_sim_time"),
         )
-        .select(
-            "station_id", "kind", "source", "scenario",
-            F.col("window.start").alias("window_start"),
-            F.col("window.end").alias("window_end"),
-            "observed_from", "observed_to", "last_event_at", "readings", "seq_min", "seq_max", "delayed", "max_delay_s",
-            "temp_min", "temp_avg", "temp_max", "humidity_avg", "rain_avg", "rain_max", "wind_avg",
-            "gust_max", "visibility_min", "pressure_avg", "rain_24h",
-        )
+        .select(F.col("window.start").alias("window_start"), F.col("window.end").alias("window_end"),
+                "city_id", "events", "created", "dispatched", "completed", "delays", "avg_delay_min",
+                "max_sim_time")
     )

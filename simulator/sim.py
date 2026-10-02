@@ -141,7 +141,7 @@ class Simulator:
         cls = delay.actual_class(route, when, self.hourly)
         noise = self.rng.lognormvariate(-SIGMA ** 2 / 2, SIGMA)
         weather_h = delay.weather_delay_h(route, cls) * noise
-        other_h = self.rng.expovariate(1 / 0.35)
+        other_h = self.rng.expovariate(1 / 0.12)    # traffic, loading: non-weather
         normal = co.normal_eta_h(route)
         factor = (normal + weather_h + other_h) / normal
         linehaul_h = (co.WAREHOUSE_DWELL_H + route.distance_km / co.LINEHAUL_KMPH + co.HUB_DWELL_H) * factor
@@ -183,7 +183,7 @@ class Simulator:
     def _arrive(self, when, trip):
         route = trip["route"]
         for o in trip["orders"]:
-            last = co.LAST_MILE_H * trip["factor"] * self.rng.uniform(0.3, 1.7)
+            last = co.LAST_MILE_H * trip["factor"] * self.rng.uniform(0.75, 1.25)
             self._at(when + timedelta(hours=last), self._complete, (trip, o))
         return [events.make("HUB_ARRIVAL", when, {
             "trip_id": trip["id"], "vehicle_id": trip["vehicle"], "hub_id": route.hub_id,

@@ -15,8 +15,8 @@ CLASSES = ("none", "rain", "heavy", "extreme")
 # IMD daily categories: light/moderate rain from 2.5 mm, heavy 64.5, very heavy 115.6+
 # (very heavy and extremely heavy fold into "extreme").
 DAILY_EDGES = (2.5, 64.5, 115.6)
-# Hourly intensity: 1 mm/h is noticeable rain, 7.6 mm/h IMD "heavy", 20 mm/h cloudburst-like.
-HOURLY_EDGES = (1.0, 7.6, 20.0)
+# Hourly intensity: 2.5 mm/h moderate rain (slows deliveries), 7.6 mm/h heavy, 20 mm/h cloudburst-like.
+HOURLY_EDGES = (2.5, 7.6, 20.0)
 SEASON_OF_MONTH = {1: "winter", 2: "winter", 3: "pre-monsoon", 4: "pre-monsoon", 5: "pre-monsoon",
                    6: "monsoon", 7: "monsoon", 8: "monsoon", 9: "monsoon",
                    10: "post-monsoon", 11: "post-monsoon", 12: "post-monsoon"}
