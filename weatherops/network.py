@@ -1,17 +1,8 @@
-"""The logistics network WeatherOps protects: real Indian cities and hub
-locations, simulated company sensors, and routes generated from a fixed seed
-so every service and the dashboard agree on the same geometry.
-
-Linehaul corridors are straight segments between real waypoint cities, not
-road-accurate polylines. Good enough to say which corridor a storm crosses;
-snap to a road network if distances ever need to be exact.
+"""Real places the ShopFlow network is built on: 40 Indian cities and the
+logistics clusters (warehouse parks) that serve them. Everything synthetic -
+warehouses, routes, orders - is derived from these in weatherops.company.
 """
-import json
-import random
-import sys
 from dataclasses import dataclass
-
-from weatherops import geo
 
 
 @dataclass(frozen=True)
@@ -30,31 +21,6 @@ class Hub:
     city_id: str
     lat: float
     lon: float
-
-
-@dataclass(frozen=True)
-class Station:
-    id: str
-    kind: str  # "reference" | "sensor"
-    city_id: str
-    hub_id: str | None
-    lat: float
-    lon: float
-    radius_km: float
-    name: str = ""
-
-
-@dataclass(frozen=True)
-class Route:
-    id: str
-    kind: str  # "linehaul" | "lastmile"
-    name: str
-    hub_ids: tuple
-    city_id: str
-    points: tuple
-    samples: tuple
-    length_km: float
-    capacity: int
 
 
 CITIES = tuple(City(*c) for c in [
@@ -100,8 +66,8 @@ CITIES = tuple(City(*c) for c in [
     ("GUW", "Guwahati", "Assam", 26.1445, 91.7362),
 ])
 
-# One hub per city, at the logistics cluster that actually serves it rather
-# than the city centre. The hub id is its city id.
+# Logistics clusters that actually serve 25 of the cities (warehouse parks
+# outside the centre). The id is the city id.
 HUBS = tuple(Hub(c, name, c, lat, lon) for c, name, lat, lon in [
     ("DEL", "Bilaspur (Gurugram)", 28.3020, 76.8890),
     ("MUM", "Bhiwandi", 19.2813, 73.0483),
@@ -129,154 +95,3 @@ HUBS = tuple(Hub(c, name, c, lat, lon) for c, name, lat, lon in [
     ("BPL", "Mandideep", 23.1000, 77.5300),
     ("VNS", "Raja Talab", 25.2800, 82.8500),
 ])
-
-# (hub_a, hub_b, waypoint cities for shape, highway label)
-CORRIDORS = (
-    ("DEL", "JAI", (), "NH48"),
-    ("JAI", "AMD", (), "NH48"),
-    ("AMD", "SRT", ("BRD",), "NH48"),
-    ("SRT", "MUM", (), "NH48"),
-    ("MUM", "PUN", (), "Expressway"),
-    ("PUN", "BLR", ("HBL",), "NH48"),
-    ("BLR", "CHE", (), "NH48"),
-    ("BLR", "HYD", (), "NH44"),
-    ("HYD", "NAG", (), "NH44"),
-    ("NAG", "BPL", (), ""),
-    ("BPL", "DEL", ("AGR",), ""),
-    ("CHE", "VJA", ("NLR",), "NH16"),
-    ("VJA", "VSK", (), "NH16"),
-    ("VSK", "BBS", (), "NH16"),
-    ("BBS", "KOL", (), "NH16"),
-    ("KOL", "PAT", (), ""),
-    ("PAT", "VNS", (), ""),
-    ("VNS", "LKO", (), ""),
-    ("LKO", "DEL", ("AGR",), ""),
-    ("KOL", "GUW", ("SLG",), ""),
-    ("DEL", "CHD", (), ""),
-    ("BLR", "CBE", (), ""),
-    ("CBE", "KOC", (), ""),
-    ("CHE", "CBE", (), ""),
-    ("HYD", "VJA", (), ""),
-    ("MUM", "NAG", ("NSK",), ""),
-    ("MUM", "IDR", ("NSK",), ""),
-    ("IDR", "BPL", (), ""),
-    ("RPR", "NAG", (), ""),
-    ("RPR", "BBS", (), ""),
-    ("RAN", "KOL", (), ""),
-    ("RAN", "PAT", (), ""),
-    ("AMD", "IDR", ("BRD",), ""),
-)
-
-REFERENCE_RADIUS_KM = 40
-SENSOR_RADIUS_KM = 10
-LASTMILE_SPOKES = 8
-
-
-class Network:
-    def __init__(self, cities, hubs, stations, routes):
-        self.cities = {c.id: c for c in cities}
-        self.hubs = {h.id: h for h in hubs}
-        self.stations = {s.id: s for s in stations}
-        self.routes = {r.id: r for r in routes}
-        self.references = [s for s in stations if s.kind == "reference"]
-        self.sensors = [s for s in stations if s.kind == "sensor"]
-        self.sensors_by_hub = {h.id: [] for h in hubs}
-        for s in self.sensors:
-            self.sensors_by_hub[s.hub_id].append(s)
-        self.hub_by_city = {h.city_id: h for h in hubs}
-        self.corridor_graph = {h.id: [] for h in hubs}
-        for r in routes:
-            if r.kind == "linehaul":
-                a, b = r.hub_ids
-                self.corridor_graph[a].append((b, r.id, r.length_km))
-                self.corridor_graph[b].append((a, r.id, r.length_km))
-
-    def region_of_point(self, lat, lon):
-        return min(self.cities.values(), key=lambda c: geo.haversine_km(lat, lon, c.lat, c.lon)).id
-
-
-def build_network(seed=7):
-    rand = random.Random(seed)
-    cities = {c.id: c for c in CITIES}
-
-    stations = [
-        Station(f"REF-{c.id}", "reference", c.id, None, c.lat, c.lon, REFERENCE_RADIUS_KM, c.name)
-        for c in CITIES
-    ]
-    for hub in HUBS:
-        n = rand.choice((4, 5))
-        for k in range(n):
-            bearing = k * 360 / n + rand.uniform(-20, 20)
-            lat, lon = geo.destination(hub.lat, hub.lon, bearing, rand.uniform(2, 12))
-            stations.append(Station(
-                f"{hub.id}-S{k + 1}", "sensor", hub.city_id, hub.id,
-                round(lat, 5), round(lon, 5), SENSOR_RADIUS_KM, f"{hub.name} sensor {k + 1}",
-            ))
-
-    routes = []
-    for hub in HUBS:
-        for k in range(LASTMILE_SPOKES):
-            end = geo.destination(hub.lat, hub.lon, k * 45 + rand.uniform(-10, 10), rand.uniform(6, 15))
-            points = ((hub.lat, hub.lon), (round(end[0], 5), round(end[1], 5)))
-            routes.append(Route(
-                f"LM-{hub.id}-{k + 1}", "lastmile", f"{hub.name} last-mile {k + 1}",
-                (hub.id,), hub.city_id, points, tuple(geo.sample_polyline(points, 1)),
-                round(geo.polyline_length_km(points), 2), rand.randint(20, 45),
-            ))
-
-    hubs = {h.id: h for h in HUBS}
-    for a, b, waypoints, highway in CORRIDORS:
-        ha, hb = hubs[a], hubs[b]
-        points = ((ha.lat, ha.lon), *((cities[w].lat, cities[w].lon) for w in waypoints), (hb.lat, hb.lon))
-        name = f"{cities[a].name}–{cities[b].name}"
-        mid = points[len(points) // 2] if len(points) > 2 else (
-            (ha.lat + hb.lat) / 2, (ha.lon + hb.lon) / 2)
-        region = min(CITIES, key=lambda c: geo.haversine_km(*mid, c.lat, c.lon)).id
-        routes.append(Route(
-            f"LH-{a}-{b}", "linehaul", f"{highway} {name}".strip(),
-            (a, b), region, points, tuple(geo.sample_polyline(points, 5)),
-            round(geo.polyline_length_km(points), 1), rand.randint(4, 12),
-        ))
-
-    return Network(CITIES, HUBS, stations, routes)
-
-
-NETWORK = build_network()
-
-
-def to_geojson(network):
-    def point(lat, lon):
-        return {"type": "Point", "coordinates": [lon, lat]}
-
-    features = []
-    for h in network.hubs.values():
-        features.append({"type": "Feature", "geometry": point(h.lat, h.lon), "properties": {
-            "layer": "hub", "id": h.id, "name": h.name, "city_id": h.city_id,
-            "city": network.cities[h.city_id].name}})
-    for s in network.stations.values():
-        features.append({"type": "Feature", "geometry": point(s.lat, s.lon), "properties": {
-            "layer": "station", "id": s.id, "kind": s.kind, "name": s.name,
-            "city_id": s.city_id, "hub_id": s.hub_id, "radius_km": s.radius_km}})
-    for r in network.routes.values():
-        features.append({"type": "Feature", "geometry": {
-            "type": "LineString", "coordinates": [[lon, lat] for lat, lon in r.points]},
-            "properties": {"layer": "route", "id": r.id, "kind": r.kind, "name": r.name,
-                           "city_id": r.city_id, "capacity": r.capacity,
-                           "length_km": r.length_km}})
-    return {"type": "FeatureCollection", "features": features}
-
-
-def _round_coords(obj, ndigits=4):
-    if isinstance(obj, float):
-        return round(obj, ndigits)
-    if isinstance(obj, list):
-        return [_round_coords(v, ndigits) for v in obj]
-    if isinstance(obj, dict):
-        return {k: _round_coords(v, ndigits) for k, v in obj.items()}
-    return obj
-
-
-if __name__ == "__main__":
-    # python -m weatherops.network dashboard/public/network.geojson
-    with open(sys.argv[1], "w", encoding="utf-8") as out:
-        json.dump(_round_coords(to_geojson(NETWORK)), out, separators=(",", ":"), ensure_ascii=False)
