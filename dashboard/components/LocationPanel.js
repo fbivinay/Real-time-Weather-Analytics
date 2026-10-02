@@ -1,114 +1,122 @@
 "use client";
+// Detail panel for one location: state, city, warehouse, hub or route.
+import { inr, istTime, MONTHS, mins, num, pct, SEVERITY_LABEL, TIER_LABEL } from "../lib/format";
+import { useFetch } from "../lib/live";
+import { category, RAIN_RAMP } from "../lib/risk";
+import { BarChart, HeatStrip } from "./charts";
+import { useUI } from "./Shell";
+import { Empty, RiskPill, SkeletonRows } from "./ui";
 
-import { useState } from "react";
+const KIND_LABEL = { state: "State", city: "City", warehouse: "Fulfilment centre", hub: "Delivery hub", route: "Route" };
+const MULT = { none: 1, rain: 1.12, heavy: 1.3, extreme: 1.56 };
 
-import { CATEGORY_LABEL, HAZARD_LABEL, categoryOf } from "../lib/categories";
-import { istClock, num } from "../lib/format";
-
-const FACTORS = [
-  ["rain", "Rain"],
-  ["wind", "Wind"],
-  ["heat", "Heat"],
-  ["fog", "Visibility"],
-];
-
-const VERDICT = {
-  ok: "Sensor healthy",
-  weather_event: "Genuine local weather (neighbours agree)",
-  sensor_suspect: "Suspect sensor - excluded from risk",
-  stale: "Sensor silent - excluded from risk",
-};
-
-function Sparkline({ points }) {
-  const [hover, setHover] = useState(null);
-  if (!points || points.length < 2) return <p className="muted" style={{ fontSize: ".8rem" }}>Collecting history…</p>;
-  const w = 320;
-  const h = 56;
-  const x = (i) => (i / (points.length - 1)) * (w - 4) + 2;
-  const y = (s) => h - 3 - (Math.max(0, Math.min(100, s ?? 0)) / 100) * (h - 6);
-  const path = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.score).toFixed(1)}`).join("");
-  const shown = hover ?? points.length - 1;
-  return (
-    <div>
-      <p className="muted" style={{ fontSize: ".74rem" }}>
-        Risk score {num(points[shown].score)} at {istClock(points[shown].t)} IST
-        {hover === null ? " (latest)" : ""}
-      </p>
-      <svg
-        className="spark"
-        viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`Risk score history, latest ${points[points.length - 1].score}`}
-        onMouseMove={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setHover(Math.round(((e.clientX - r.left) / r.width) * (points.length - 1)));
-        }}
-        onMouseLeave={() => setHover(null)}
-      >
-        <line x1="0" x2={w} y1={y(50)} y2={y(50)} stroke="var(--rule)" strokeDasharray="3 3" />
-        <line x1="0" x2={w} y1={y(75)} y2={y(75)} stroke="var(--rule)" strokeDasharray="3 3" />
-        <path d={path} fill="none" stroke="var(--ink-soft)" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        <circle cx={x(shown)} cy={y(points[shown].score)} r="3.5" fill="var(--ink)" stroke="var(--surface)" strokeWidth="2" />
-      </svg>
-    </div>
-  );
+function Stat({ l, v, sub }) {
+  return <div><div className="l">{l}</div><div className="v">{v}</div>{sub ? <div className="note">{sub}</div> : null}</div>;
 }
 
-export default function LocationPanel({ location, history }) {
-  if (!location) {
-    return (
-      <section className="card">
-        <h2>Location detail</h2>
-        <div className="empty">Select a station on the map.</div>
-      </section>
-    );
-  }
-  const a = location.assessment;
-  const cat = categoryOf(location);
-  const v = location.values ?? {};
-  const forecast = a?.forecast_category ? `${CATEGORY_LABEL[a.forecast_category]} (${a.forecast_score}) expected within 60 min` : null;
+export default function LocationPanel({ kind, id, name, mapRow, onSelect }) {
+  const { openOrder } = useUI();
+  const { data, loading, error } = useFetch(`/api/locations/${kind}/${encodeURIComponent(id)}`, { refreshMs: 30000 });
+  const live = data?.live || mapRow || {};
+  const score = mapRow?.impact_index ?? live.score ?? 0;
+  const hist = data?.history;
+  const monsoon = hist?.monsoon;
   return (
-    <section className="card" aria-labelledby="loc-title">
-      <div className="card-head">
-        <h2 id="loc-title">{location.name || location.station_id}</h2>
-        <span className="hint mono">{location.station_id} · {location.kind === "reference" ? "Open-Meteo city reference" : "simulated hub sensor"}</span>
+    <div>
+      <div className="eyebrow">{KIND_LABEL[kind]}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 2px" }}>
+        <h2 style={{ fontSize: 24, fontWeight: 650, letterSpacing: "-0.02em", margin: 0 }}>{name || id}</h2>
+        <RiskPill score={score} category={category(score)} />
       </div>
-      <div className="loc-head">
-        <span className="loc-score">{a ? a.score : "—"}</span>
-        <span className={`chip chip-${cat}`}>{CATEGORY_LABEL[cat]}</span>
-        {a?.hazard && <span className="chip chip-plain">{HAZARD_LABEL[a.hazard]}</span>}
-        {a?.unusual && <span className="chip chip-plain" title="Beyond this city's 95th percentile for the month">Unusual for here</span>}
-        {a?.developing && <span className="chip chip-plain">Developing</span>}
+      <div className="note">Impact score 0–100: risk of the next 12 h of deliveries{mapRow?.historical_score != null ? `, blended with monsoon history (${Math.round(mapRow.historical_score)})` : ""}.</div>
+
+      <div className="kv" style={{ marginTop: 16 }}>
+        <Stat l="Orders, next 12 h" v={num(live.orders)} />
+        <Stat l="Weather exposed" v={num(live.exposed)} sub={live.orders ? pct(live.exposed / live.orders, 0) : null} />
+        <Stat l="Potential delays" v={num(live.potential_delays ?? (live.avg_delay_min >= 30 ? live.exposed : 0))} />
+        <Stat l="Average delay" v={live.avg_delay_min ? `+${mins(live.avg_delay_min)}` : "–"} />
+        <Stat l="SLA risk" v={num(live.sla_risk)} />
+        <Stat l="In transit now" v={num(live.in_transit)} />
       </div>
-      {location.verdict && <p className="muted" style={{ fontSize: ".82rem" }}>{VERDICT[location.verdict.status]}{location.verdict.reason ? ` (${location.verdict.reason} on ${location.verdict.field})` : ""}</p>}
-      {location.forecast && (
-        <p style={{ fontSize: ".84rem" }}>
-          <strong>In 60 min (LightGBM):</strong> rain {num(location.forecast.rain_mmph, 1)} mm/h · gust{" "}
-          {num(location.forecast.gust_kmph)} km/h · {num(location.forecast.temperature_c, 1)} °C · visibility{" "}
-          {num(location.forecast.visibility_m)} m{forecast ? ` - ${forecast}` : ""}
-        </p>
-      )}
-      {a && (
-        <div className="factors" aria-label="Risk factors">
-          {FACTORS.map(([key, label]) => (
-            <div className="factor" key={key}>
-              <span>{label}</span>
-              <span className="bar"><i style={{ width: `${Math.round((a.factors?.[key] ?? 0) * 100)}%` }} /></span>
-              <span className="num">{Math.round((a.factors?.[key] ?? 0) * 100)}</span>
+      {live.top_route ? <div style={{ marginTop: 12, fontSize: 14 }}><span className="muted">Top affected route </span><span className="mono">{live.top_route}</span></div> : null}
+
+      {loading && !data ? <SkeletonRows rows={6} /> : null}
+      {error && !data ? <Empty>Details for this location need the live backend.</Empty> : null}
+
+      {kind === "city" && data?.forecast ? (
+        <>
+          <div className="h3">Rain, next 48 hours <span className="faint" style={{ fontWeight: 400 }}>· now {SEVERITY_LABEL[data.weather?.severity] || "–"}, {data.weather?.rain_mmph ?? 0} mm/h</span></div>
+          <HeatStrip cells={data.forecast} color={(c) => RAIN_RAMP[Math.min(4, Math.round(c.p_rain * 4))]}
+            tooltip={(c) => <>{pct(c.p_rain, 0)} chance of rain · {SEVERITY_LABEL[c.cls]}</>} />
+          <div className="note" style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}><span>now</span><span>+24 h</span><span>+48 h</span></div>
+        </>
+      ) : null}
+
+      {kind === "city" && data?.climatology?.length ? (
+        <>
+          <div className="h3">Rainfall climatology, 2015–2025 <span className="faint" style={{ fontWeight: 400 }}>· mm per month</span></div>
+          <BarChart data={data.climatology} value={(d) => d.monthly_total_mm} label={(d) => MONTHS[d.month - 1][0]}
+            format={(v) => `${Math.round(v)}`} height={130} color={(d) => (d.season === "monsoon" ? "#4d87c4" : "#9fb8d4")}
+            tooltip={(d) => <><div className="t">{MONTHS[d.month - 1]} · {d.season}</div>{Math.round(d.monthly_total_mm)} mm · rainy days {pct(d.p_rainy, 0)} · heavy {pct(d.p_heavy, 1)}</>} />
+        </>
+      ) : null}
+
+      {kind === "route" && data?.route ? (
+        <>
+          <div className="h3">ETA by weather · {data.route.distance_km} km · sensitivity {data.route.sensitivity}×</div>
+          <table className="table">
+            <tbody>
+              {Object.entries(data.route.eta_by_class_h).map(([cls, h]) => (
+                <tr key={cls}><td>{cls === "none" ? "Normal" : SEVERITY_LABEL[cls]}</td>
+                  <td className="r mono">{h.toFixed(1)} h</td>
+                  <td className="r mono faint">{cls === "none" ? "" : `+${mins((h - data.route.normal_eta_h) * 60)}`}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="note" style={{ marginTop: 6 }}>Passes {data.route.path.join(" → ")}. Multipliers {Object.values(MULT).join(" / ")} × sensitivity.</div>
+        </>
+      ) : null}
+
+      {data?.children?.length ? (
+        <>
+          <div className="h3">{kind === "state" ? "Cities" : kind === "route" ? "Orders on this route (highest risk first)" : "Routes"}</div>
+          <table className="table">
+            <tbody>
+              {kind === "route" ? data.children.map((o) => (
+                <tr key={o.id} className="click" onClick={() => openOrder(o.id)}>
+                  <td className="mono"><span className="link">{o.id}</span></td>
+                  <td>{TIER_LABEL[o.tier]}</td>
+                  <td className="num">{istTime(o.planned_dispatch)}</td>
+                  <td>{o.score != null ? <RiskPill score={o.score} category={o.category} /> : <span className="tag">{o.status.replace("_", " ")}</span>}</td>
+                </tr>
+              )) : [...data.children].sort((a, b) => (b.score || 0) - (a.score || 0)).map((c) => (
+                <tr key={c.id} className="click" onClick={() => onSelect(kind === "state" ? "city" : "route", c.id)}>
+                  <td><span className={`link ${kind === "state" ? "" : "mono"}`}>{c.name || c.code || c.id}</span></td>
+                  <td className="r num">{num(c.orders)} orders</td>
+                  <td className="r"><RiskPill score={c.score || 0} category={c.category} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+
+      {hist?.last_12_months?.length ? (
+        <>
+          <div className="h3">Weather cost, last 12 months <span className="faint" style={{ fontWeight: 400 }}>· simulated estimate</span></div>
+          <BarChart data={hist.last_12_months} value={(d) => d.weather_cost || 0} label={(d) => MONTHS[+d.month.slice(5) - 1][0]}
+            format={inr} yFormat={(v) => inr(v).replace("₹", "")} height={130}
+            color={(d) => ([6, 7, 8, 9].includes(+d.month.slice(5)) ? "#cc5a43" : "#0b0b0c")}
+            tooltip={(d) => <><div className="t">{d.month}</div>{inr(d.weather_cost)} · {num(d.affected)} of {num(d.orders)} orders delayed by rain</>} />
+          {monsoon?.orders ? (
+            <div className="kv" style={{ marginTop: 12 }}>
+              <Stat l="Monsoon orders (2021–25)" v={num(monsoon.orders)} />
+              <Stat l="Delayed by rain" v={pct(monsoon.affected / monsoon.orders)} />
+              <Stat l="Avg weather delay" v={monsoon.avg_delay_min ? `+${mins(monsoon.avg_delay_min)}` : "–"} />
             </div>
-          ))}
-        </div>
-      )}
-      <div className="values">
-        <div><span className="k">Rain mm/h</span><span className="v">{num(v.rain_avg, 1)}</span></div>
-        <div><span className="k">Gust km/h</span><span className="v">{num(v.gust_max)}</span></div>
-        <div><span className="k">Temp °C</span><span className="v">{num(v.temp_avg, 1)}</span></div>
-        <div><span className="k">Humidity %</span><span className="v">{num(v.humidity_avg)}</span></div>
-        <div><span className="k">Visibility m</span><span className="v">{num(v.visibility_min)}</span></div>
-        <div><span className="k">Pressure hPa</span><span className="v">{num(v.pressure_avg, 1)}</span></div>
-      </div>
-      <Sparkline points={history} />
-    </section>
+          ) : null}
+        </>
+      ) : null}
+    </div>
   );
 }

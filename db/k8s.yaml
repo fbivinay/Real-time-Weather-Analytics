@@ -1,0 +1,71 @@
+# PostgreSQL for ShopFlow master data, history, live orders and predictions.
+# One instance on the node's local-path storage; the password lives in the
+# pg-auth Secret (created by db/deploy.sh, never in this file).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: weather-pipeline
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: weather-pipeline
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          args: ["-c", "shared_buffers=192MB", "-c", "work_mem=16MB", "-c", "max_connections=60",
+                 "-c", "synchronous_commit=off"]
+          env:
+            - name: POSTGRES_USER
+              value: weatherops
+            - name: POSTGRES_DB
+              value: weatherops
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-auth
+                  key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "weatherops", "-d", "weatherops"]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 8Gi
