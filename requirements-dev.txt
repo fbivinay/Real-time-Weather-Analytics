@@ -1,0 +1,10 @@
+# Local test environment. Container images install their own pinned subsets.
+pytest==8.3.4
+kafka-python-ng==2.2.3
+redis==5.2.1
+fastapi==0.115.12
+httpx==0.28.1
+numpy==2.2.6
+pandas==2.2.3
+pyarrow==20.0.0
+lightgbm==4.6.0

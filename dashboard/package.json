@@ -5,9 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --test lib/feed-core.test.mjs scripts/record.test.mjs",
+    "record": "node scripts/record.mjs"
   },
   "dependencies": {
+    "maplibre-gl": "^5.24.0",
     "next": "^16.3.5",
     "react": "19.1.0",
     "react-dom": "19.1.0"

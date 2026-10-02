@@ -1,0 +1,34 @@
+# Public entry point: https://WEATHEROPS_HOST/api/* and wss://WEATHEROPS_HOST/ws
+# (deploy.sh substitutes the host). cert-manager sees the annotation, issues
+# a Let's Encrypt certificate into weatherops-tls and renews it.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: weather-api
+  namespace: weather-pipeline
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - WEATHEROPS_HOST
+      secretName: weatherops-tls
+  rules:
+    - host: WEATHEROPS_HOST
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: weather-api
+                port:
+                  number: 8000
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: weather-api
+                port:
+                  number: 8000
