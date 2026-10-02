@@ -78,7 +78,7 @@ function Search({ onClose }) {
                 {head}
                 <div className={`it${i === active ? " on" : ""}`} onMouseEnter={() => setActive(i)} onClick={() => pick(it)}>
                   <span className={it.g === "Orders" || it.g === "Routes" ? "mono" : ""}>{it.label}</span>
-                  <span className="faint" style={{ fontSize: 13 }}>{it.sub}</span>
+                  <span className="faint" style={{ fontSize: 14.9 }}>{it.sub}</span>
                 </div>
               </div>
             );
@@ -104,8 +104,7 @@ function StatusBar() {
       <div className="group">
         <StatusDot status={live.status === "live" || live.status === "polling" ? "ok" : live.status === "offline" ? "down" : "degraded"}
           label={STATUS_WORD[live.status] || live.status} />
-        {ov ? <span className="mono" title="Simulated business time">{istDay(ov.sim_time).replace(/, \d{4}$/, "")} · {istHour(ov.sim_time)} IST</span> : null}
-        <span className="badge-demo" title="ShopFlow India is fictional; rainfall is real, replayed hour by hour">Synthetic data · {ov ? new Date(ov.replay?.start).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "Jul 2025"} rainfall</span>
+        {ov ? <span className="mono">{istDay(ov.sim_time).replace(/, \d{4}$/, "")} · {istHour(ov.sim_time)} IST</span> : null}
       </div>
       <div className="group">
         {on ? (
@@ -142,13 +141,13 @@ function Chrome({ children }) {
             </div>
           </Link>
           <nav className="pillnav" aria-label="Primary">
-            {NAV.map(([href, n, label]) => (
-              <Link key={href} href={href} className={path === href ? "on" : ""}><span className="n">{n}</span>{label}</Link>
+            {NAV.map(([href, , label]) => (
+              <Link key={href} href={href} className={path === href ? "on" : ""}>{label}</Link>
             ))}
           </nav>
           <div className="header-right">
             <button type="button" className="searchpill" onClick={openSearch}>
-              Search orders, routes, cities <kbd>Ctrl K</kbd>
+              Search orders, routes, cities
             </button>
           </div>
         </div>
@@ -166,15 +165,10 @@ function Chrome({ children }) {
       {children}
       <footer className="footer">
         <div>
-          <div>
-            WeatherOps turns rainfall into delivery decisions for <b>ShopFlow India</b>, a fictional company: every
-            customer, order, route and cost is synthetic demo data. Rainfall is real — Open-Meteo archive and
-            historical-forecast data (CC BY 4.0), replayed hour by hour. Boundaries: Natural Earth (India point of view).
-          </div>
           <div className="wordmark">WeatherOps</div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 16px", alignContent: "start" }}>
-          <span>Pipeline</span><span>Simulator → Kafka → Spark Structured Streaming → Postgres / Redis → FastAPI → WebSocket</span>
+          <span>Pipeline</span><span>Event stream → Kafka → Spark Structured Streaming → Postgres / Redis → FastAPI → WebSocket</span>
           <span>Risk model</span><span>Additive, explained score + logistic SLA-breach probability fitted on delivery history</span>
           <span>Source</span><a className="link" href="https://github.com/fbivinay/Real-time-Weather-Analytics">github.com/fbivinay/Real-time-Weather-Analytics</a>
         </div>

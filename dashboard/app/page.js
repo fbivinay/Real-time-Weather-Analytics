@@ -45,24 +45,24 @@ function LiveOps({ ov }) {
   const windows = s.windows || [];
   return (
     <div className="panel">
-      <div className="panel-h"><h2>Live operations</h2><span className="q">Spark 30-second windows, network total</span></div>
+      <div className="panel-h"><h2>Live operations</h2></div>
       <div className="panel-b">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 16 }}>
-          <div><div className="note">Events / second</div><div style={{ fontSize: 22, fontWeight: 650 }}><Num value={s.events_per_s} format={(v) => num(v, 1)} /></div></div>
-          <div><div className="note">Active deliveries</div><div style={{ fontSize: 22, fontWeight: 650 }}><Num value={k.in_transit} /></div></div>
-          <div><div className="note">Trucks delayed by rain</div><div style={{ fontSize: 22, fontWeight: 650 }} className={k.delayed_trips ? "red" : ""}><Num value={k.delayed_trips} /></div></div>
-          <div><div className="note">Delivered today</div><div style={{ fontSize: 22, fontWeight: 650 }}><Num value={k.delivered_today} /></div></div>
+          <div><div className="note">Events / second</div><div style={{ fontSize: 25.3, fontWeight: 650 }}><Num value={s.events_per_s} format={(v) => num(v, 1)} /></div></div>
+          <div><div className="note">Active deliveries</div><div style={{ fontSize: 25.3, fontWeight: 650 }}><Num value={k.in_transit} /></div></div>
+          <div><div className="note">Trucks delayed by rain</div><div style={{ fontSize: 25.3, fontWeight: 650 }} className={k.delayed_trips ? "red" : ""}><Num value={k.delayed_trips} /></div></div>
+          <div><div className="note">Delivered today</div><div style={{ fontSize: 25.3, fontWeight: 650 }}><Num value={k.delivered_today} /></div></div>
         </div>
         {windows.length ? (
           <Spark data={windows} value={(w) => w.events} height={44}
             tooltip={(w) => <><div className="t">{istHour(w.window_start)} wall clock</div>{num(w.events)} events · {num(w.created)} orders · {num(w.completed)} delivered</>} />
         ) : <Skeleton h={44} />}
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 13 }} className="muted">
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 14.9 }} className="muted">
           <span>Last event: <b className="mono" style={{ color: "var(--ink)" }}>{TYPE_LABEL[last.type] || "–"}</b>{last.order_id ? ` · ${last.order_id}` : ""}{last.city_id ? ` · ${last.city_id}` : ""}</span>
           <span>Freshness <span className="mono">{s.freshness_s != null ? `${s.freshness_s}s` : "–"}</span> · lag <span className="mono">{num(s.consumer_lag ?? 0)}</span></span>
         </div>
         {k.wet_cities?.length ? (
-          <div style={{ marginTop: 12, fontSize: 13 }}>
+          <div style={{ marginTop: 12, fontSize: 14.9 }}>
             <span className="muted">Raining now: </span>{k.wet_cities.map((c) => <Link key={c} href={`/map?sel=city:${c}`} className="tag" style={{ marginRight: 4, textDecoration: "none" }}>{c}</Link>)}
           </div>
         ) : null}
@@ -95,7 +95,7 @@ function CurrentRisk({ ov }) {
                 <td className="r num">{num(r.orders)}</td>
                 <td className="r num">{num(r.exposed)}</td>
                 <td className="r num">{r.avg_delay_min ? `+${mins(r.avg_delay_min)}` : "–"}</td>
-                <td className="mono" style={{ fontSize: 13 }}>{r.top_route || (tab === "routes" ? SEVERITY_LABEL[r.rain_now] : "–")}</td>
+                <td className="mono" style={{ fontSize: 14.9 }}>{r.top_route || (tab === "routes" ? SEVERITY_LABEL[r.rain_now] : "–")}</td>
               </tr>
             ))}
           </tbody>
@@ -113,7 +113,7 @@ function CriticalOrders({ ov }) {
     <div className="panel">
       <div className="panel-h">
         <h2>Critical upcoming orders</h2>
-        <span className="q">One row per route, service and dispatch wave · <Link href="/future" className="link">all upcoming orders →</Link></span>
+        <span className="q"><Link href="/future" className="link">All upcoming orders →</Link></span>
       </div>
       <div className="panel-b">
         {rows.length ? (
@@ -156,19 +156,11 @@ export default function Overview() {
   }
   return (
     <main className="page">
-      <div className="pagehead">
-        <div>
-          <div className="eyebrow">01 · Overview · what is happening right now</div>
-          <h1 className="headline">{headline(ov)}</h1>
-          <p className="lede">ShopFlow India across 40 cities, 10 fulfilment centres and 80 routes. Figures update with every
-            engine tick from the live event stream.</p>
-        </div>
-      </div>
       <KpiBand ov={ov} />
       <div className="grid sect" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)" }}>
         <div className="grid" style={{ alignContent: "start" }}>
           <div className="panel">
-            <div className="panel-h"><h2>Alerts</h2><span className="q">Plain-language, from the engine</span></div>
+            <div className="panel-h"><h2>Alerts</h2></div>
             <div className="panel-b">
               <ul className="alerts">
                 {ov.alerts.map((a) => <li key={a.text} className={a.level}><i className="mk" /><span>{a.text}</span></li>)}

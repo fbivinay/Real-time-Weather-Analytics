@@ -10,7 +10,7 @@ const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 export const metadata = {
   title: "WeatherOps — Weather-aware delivery intelligence",
   description:
-    "Monitor, analyze, predict and simulate how rainfall affects ShopFlow India's delivery network: live operations, impact map, future order risk and history.",
+    "Monitor, analyze and predict how rainfall affects ShopFlow India's delivery network: live operations, impact map, future order risk and history.",
 };
 
 export default function RootLayout({ children }) {

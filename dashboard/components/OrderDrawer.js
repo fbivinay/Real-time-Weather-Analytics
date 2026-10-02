@@ -13,7 +13,7 @@ export function Contributions({ prediction }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
-        <span style={{ fontSize: 30, fontWeight: 650, letterSpacing: "-0.02em" }}>{Math.round(prediction.score)}</span>
+        <span style={{ fontSize: 34.5, fontWeight: 650, letterSpacing: "-0.02em" }}>{Math.round(prediction.score)}</span>
         <span className="muted">/ 100 risk score =</span>
       </div>
       <div style={{ marginBottom: 14 }}><ScoreBar contributions={prediction.contributions} score={prediction.score} /></div>
@@ -47,7 +47,7 @@ export default function OrderDrawer({ id, onClose }) {
         <div className="drawer-h">
           <div className="eyebrow">Order</div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-            <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>{id}</span>
+            <span className="mono" style={{ fontSize: 25.3, fontWeight: 600 }}>{id}</span>
             {p ? <RiskPill score={p.score} category={p.category} /> : null}
             {o ? <span className="tag">{o.status.replace("_", " ")}</span> : null}
           </div>
@@ -55,7 +55,7 @@ export default function OrderDrawer({ id, onClose }) {
         </div>
         <div className="drawer-b">
           {loading ? <SkeletonRows rows={10} /> : null}
-          {error ? <Empty>{error.status === 404 ? "This order is no longer in the live window (delivered orders are kept for two simulated days)." : "Order details need the live backend."}</Empty> : null}
+          {error ? <Empty>{error.status === 404 ? "This order is no longer in the live window (delivered orders are kept for two days)." : "Order details need the live backend."}</Empty> : null}
           {o ? (
             <>
               <div className="kv">
@@ -104,7 +104,6 @@ export default function OrderDrawer({ id, onClose }) {
                   })}
                 </tbody>
               </table>
-              <div className="note" style={{ marginTop: 6 }}>Weather-induced delay = weather-affected ETA − normal ETA. Route sensitivity {o.sensitivity}×.</div>
 
               {o.items?.length ? (
                 <>
@@ -125,7 +124,6 @@ export default function OrderDrawer({ id, onClose }) {
                       <tr key={i}><td>{TYPE_LABEL[e.type] || e.type}</td><td className="r mono">{istTime(e.sim_time)}</td></tr>
                     ))}
                   </tbody></table>
-                  <div className="note" style={{ marginTop: 6 }}>As written to Postgres by Spark after validation and de-duplication.</div>
                 </>
               ) : null}
             </>

@@ -13,17 +13,6 @@ import { RAIN_RAMP, RISK_HEX } from "../../lib/risk";
 const WINDOWS = [6, 12, 24, 48];
 const SORTS = { score: "Risk", dispatch: "Dispatch", delay: "Expected delay", breach: "SLA probability" };
 
-function Summary({ s, w }) {
-  if (!s) return null;
-  return (
-    <p className="lede" style={{ fontSize: 16, color: "var(--ink-2)" }}>
-      In the next {w} hours <b>{num(s.scheduled)}</b> orders dispatch. <b>{num(s.exposed)}</b> are likely to meet rain
-      ({num(s.heavy_exposed)} heavy). <b className="red">{num(s.high + s.critical)}</b> score High or Critical, about{" "}
-      <b>{num(s.sla_breaches)}</b> may miss their promised time, and weather adds <b>{mins(s.expected_delay_min)}</b> per order on average.
-    </p>
-  );
-}
-
 function Timeline({ data, window }) {
   const buckets = useMemo(() => {
     if (!data?.timeline) return [];
@@ -130,10 +119,10 @@ function RiskTable({ window }) {
             </table>
             {!t.rows.length ? <Empty>No upcoming orders match these filters.</Empty> : null}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-              <span className="note">Sorted by {SORTS[sort].toLowerCase()} · click an order to see why it is at risk</span>
+              <span />
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <button type="button" className="btn ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
-                <span className="mono" style={{ fontSize: 13, padding: "0 6px" }}>{page} / {num(pages)}</span>
+                <span className="mono" style={{ fontSize: 14.9, padding: "0 6px" }}>{page} / {num(pages)}</span>
                 <button type="button" className="btn ghost" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button>
               </div>
             </div>
@@ -176,14 +165,13 @@ function Scenario({ window, topCity }) {
     <div className="panel" style={{ position: "sticky", top: 130 }}>
       <div className="panel-h"><h2>What if we change the operation?</h2></div>
       <div className="panel-b">
-        <div className="note" style={{ marginBottom: 8 }}>Re-scores the next {window} h of orders with the same delay and SLA models. Simulated impact / estimated outcome.</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
           {PRESETS.map(([label, l]) => (
-            <button key={label} type="button" className="btn ghost" style={{ height: 32, fontSize: 13, padding: "0 12px" }}
+            <button key={label} type="button" className="btn ghost" style={{ height: 32, fontSize: 14.9, padding: "0 12px" }}
               onClick={() => { const n = { dispatch_shift_h: 0, reroute: false, add_hub: "", rain_scale: 1, ...l }; setLevers(n); run(n); }}>{label}</button>
           ))}
           {topCity ? (
-            <button type="button" className="btn ghost" style={{ height: 32, fontSize: 13, padding: "0 12px" }}
+            <button type="button" className="btn ghost" style={{ height: 32, fontSize: 14.9, padding: "0 12px" }}
               onClick={() => { const n = { dispatch_shift_h: 0, reroute: false, add_hub: topCity.id, rain_scale: 1 }; setLevers(n); run(n); }}>
               Micro-hub in {topCity.name}</button>
           ) : null}
@@ -207,12 +195,12 @@ function Scenario({ window, topCity }) {
           <input type="range" min={0.5} max={2} step={0.1} value={levers.rain_scale} onChange={(e) => set("rain_scale", +e.target.value)} />
         </div>
         <button type="button" className="btn" style={{ width: "100%", marginTop: 8 }} onClick={() => run()} disabled={busy}>
-          {busy ? "Simulating…" : "Run simulation"}</button>
+          {busy ? "Running…" : "Run scenario"}</button>
         {err ? <div className="note" style={{ marginTop: 10, color: "var(--down)" }}>{err}</div> : null}
         {res ? (
           <div style={{ marginTop: 16, animation: "fadein .3s" }}>
             <table className="table compact">
-              <thead><tr><th>Estimated outcome</th><th className="r">Current</th><th className="r">Simulated</th><th className="r">Change</th></tr></thead>
+              <thead><tr><th>Metric</th><th className="r">Current</th><th className="r">With change</th><th className="r">Change</th></tr></thead>
               <tbody>
                 {rows.map(([label, k, fmt]) => {
                   const d = res.simulated[k] - res.current[k];
@@ -228,12 +216,6 @@ function Scenario({ window, topCity }) {
                 })}
               </tbody>
             </table>
-            <div className="note" style={{ marginTop: 8 }}>
-              {num(res.current.orders)} orders scored{res.simulated.rerouted ? ` · ${num(res.simulated.rerouted)} rerouted` : ""}
-              {res.simulated.local ? ` · ${num(res.simulated.local)} served by the micro-hub` : ""}
-              {res.simulated.cost_breakdown.cost_ops ? ` · includes ${inr(res.simulated.cost_breakdown.cost_ops)} operating cost of the change` : ""}.
-              {" "}{res.label}, run #{res.run_id}.
-            </div>
           </div>
         ) : null}
       </div>
@@ -251,9 +233,7 @@ export default function Future() {
     <main className="page">
       <div className="pagehead">
         <div>
-          <div className="eyebrow">03 · Future · what is likely to happen</div>
-          <h1 className="headline">Which upcoming deliveries will rain hit — and why</h1>
-          <Summary s={s} w={window} />
+          <h1 className="headline">Upcoming delivery risk</h1>
         </div>
         <div className="seg">{WINDOWS.map((w) => <button key={w} type="button" className={w === window ? "on" : ""} onClick={() => setWindow(w)}>Next {w} h</button>)}</div>
       </div>
@@ -271,7 +251,7 @@ export default function Future() {
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 400px", gap: 18, marginTop: 18, alignItems: "start" }}>
         <div className="grid">
           <div className="panel">
-            <div className="panel-h"><h2>Risk timeline, next 48 h</h2><span className="q">High/Critical orders per 2-hour dispatch wave (IST)</span></div>
+            <div className="panel-h"><h2>Risk timeline, next 48 h</h2></div>
             <div className="panel-b"><Timeline data={tl.data} window={window} /></div>
           </div>
           <RiskTable window={window} />

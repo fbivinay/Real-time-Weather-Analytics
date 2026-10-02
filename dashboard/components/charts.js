@@ -117,7 +117,7 @@ export function HBars({ rows, value, label, format, color = () => "var(--ink)", 
       {rows.map((r, i) => (
         <div key={i} onClick={onClick ? () => onClick(r) : undefined}
           style={{ display: "grid", gridTemplateColumns: "130px 1fr 130px", gap: 12, alignItems: "center",
-            cursor: onClick ? "pointer" : "default", fontSize: 13.5 }}>
+            cursor: onClick ? "pointer" : "default", fontSize: 15.5 }}>
           <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
             className={onClick ? "link" : ""}>{label(r)}</div>
           <div className="bar" style={{ height: 8 }}>
