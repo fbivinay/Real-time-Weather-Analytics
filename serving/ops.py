@@ -399,16 +399,23 @@ class Ops:
         return out
 
     def critical_orders(self, limit=20):
-        rows = []
+        """Highest-risk upcoming orders, one row per cohort (route x service x
+        wave): orders in a cohort share every risk input, so the rest are
+        counted as `similar` instead of repeating the same row."""
+        cohorts = {}
         for o in self.orders.values():
             if o["status"] not in ("scheduled", "assigned"):
                 continue
             a = self.order_risk(o)
-            if a and a["category"] in ("High", "Critical"):
-                rows.append((a["score"], o, a))
-        rows.sort(key=lambda x: (-x[0], x[1]["planned_dispatch"]))
-        return [order_view(o, a) for _, o, a in rows[:limit]]
-
+            if not a or a["category"] not in ("High", "Critical"):
+                continue
+            key = (o["route_id"], o["tier"], o["planned_dispatch"])
+            if key in cohorts:
+                cohorts[key][2] += 1
+            else:
+                cohorts[key] = [o, a, 0]
+        rows = sorted(cohorts.values(), key=lambda x: (-x[1]["score"], x[0]["planned_dispatch"]))[:limit]
+        return [{**order_view(o, a), "similar": n} for o, a, n in rows]
 
 def iso(t):
     return t.isoformat().replace("+00:00", "Z") if t else None

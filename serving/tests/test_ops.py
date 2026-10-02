@@ -94,3 +94,10 @@ def test_prune_forgets_old_deliveries(ops):
     ops.sim_now -= timedelta(days=3)
     assert gone and len(ops.orders) == before - len(gone)
     json.dumps([str(g) for g in gone])
+
+
+def test_critical_orders_show_each_cohort_once(ops):
+    rows = ops.critical_orders(50)
+    keys = [(r["route_id"], r["tier"], r["planned_dispatch"]) for r in rows]
+    assert len(keys) == len(set(keys))
+    assert sum(r["similar"] + 1 for r in rows) >= len(rows)
