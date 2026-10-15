@@ -1,5 +1,5 @@
 # Local test environment. Container images install their own pinned subsets.
-pytest==8.3.4
+pytest==9.0.3
 kafka-python-ng==2.2.3
 redis==5.2.1
 fastapi==0.115.12
