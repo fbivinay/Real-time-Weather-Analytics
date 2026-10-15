@@ -3,6 +3,7 @@ pytest==8.3.4
 kafka-python-ng==2.2.3
 redis==5.2.1
 fastapi==0.115.12
+psycopg[binary]==3.2.10
 httpx==0.28.1
 numpy==2.2.6
 pandas==2.2.3

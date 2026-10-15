@@ -1,6 +1,10 @@
 # WeatherOps — Weather-Aware Delivery Intelligence
 
+[![tests](https://github.com/fbivinay/Real-time-Weather-Analytics/actions/workflows/tests.yml/badge.svg)](https://github.com/fbivinay/Real-time-Weather-Analytics/actions/workflows/tests.yml)
+
 **Live:** https://weather-ops-delivery-intelligence.vercel.app · desktop and laptop only (1366 px and wider)
+
+![The delivery-impact map: rainfall risk by state, routes and hubs](docs/screenshot.png)
 
 WeatherOps is an internal tool for **ShopFlow India**, a fictional e-commerce company, used by
 delivery operations managers and logistics analysts. It answers, within seconds:
