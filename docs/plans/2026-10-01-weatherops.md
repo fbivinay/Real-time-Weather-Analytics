@@ -1,6 +1,5 @@
 # WeatherOps Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > **Execution note:** the user waived review gates ("don't wait for me, just
 > finish the job"). The plan author executes natively. To avoid writing every
@@ -13,7 +12,7 @@
 
 **Tech Stack:** Python 3.12 (containers) / 3.13 (local), kafka-python-ng, redis-py, FastAPI, Spark 3.5.3, LightGBM, Next.js 16 + React 19, maplibre-gl, Terraform, k3s (Traefik), cert-manager.
 
-**Spec:** `docs/superpowers/specs/2026-10-01-weatherops-design.md`
+**Spec:** `docs/specs/2026-10-01-weatherops-design.md`
 
 ## Global Constraints
 

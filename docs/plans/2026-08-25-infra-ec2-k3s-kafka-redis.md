@@ -1,7 +1,5 @@
 # Infra: EC2 + k3s + Kafka + Redis — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** One `terraform apply` stands up a single EC2 node running k3s
 with Kafka (KRaft, externally reachable via a stable Elastic IP) and
 Redis (internal-only, authenticated), verified end-to-end from both
@@ -18,7 +16,7 @@ operator-run script validates external Kafka access from outside AWS.
 Helm 3, Bitnami `kafka` and `redis` charts, bash, `kcat` (for external
 Kafka verification).
 
-**Spec:** `docs/superpowers/specs/2026-08-25-infra-design.md`
+**Spec:** `docs/specs/2026-08-25-infra-design.md`
 
 ## Global Constraints
 

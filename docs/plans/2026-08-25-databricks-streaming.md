@@ -1,7 +1,5 @@
 # Databricks Structured Streaming — Alerts + Aggregates Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** A Databricks Community Edition scheduled Job consumes
 `weather-data`, detects heat/rain/wind alerts and computes 1-minute
 per-station aggregates, and publishes both to `weather-processed`
@@ -22,7 +20,7 @@ API doesn't support Terraform management.
 Community Edition, PySpark Structured Streaming, `kafka-python-ng`
 (topic creation), `pytest`.
 
-**Spec:** `docs/superpowers/specs/2026-08-25-databricks-streaming-design.md`
+**Spec:** `docs/specs/2026-08-25-databricks-streaming-design.md`
 
 ## Global Constraints
 

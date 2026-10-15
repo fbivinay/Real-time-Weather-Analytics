@@ -85,4 +85,4 @@ MSYS_NO_PATHCONV=1 docker run --rm --user 0 -v "$PWD:/repo" -w /repo \
   apache/spark:3.5.3-python3 bash -c "pip install -q pytest && python3 -m pytest -q spark_processor/tests"
 ```
 
-Design: `docs/superpowers/specs/2026-10-02-shopflow-delivery-intelligence-design.md`.
+Design: `docs/specs/2026-10-02-shopflow-delivery-intelligence-design.md`.

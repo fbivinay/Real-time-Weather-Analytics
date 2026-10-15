@@ -1,7 +1,5 @@
 # Data Pipeline: Weather Generator + Kafka Producer — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** A containerized Python process that continuously generates
 realistic weather readings for 5 stations and produces them to the
 `weather-data` Kafka topic on the cluster built in sub-project 1, with
@@ -16,7 +14,7 @@ Deployment on the existing k3s cluster.
 client, no native build step), `pytest` for tests, Docker, Kubernetes
 (k3s, from sub-project 1).
 
-**Spec:** `docs/superpowers/specs/2026-08-25-data-pipeline-design.md`
+**Spec:** `docs/specs/2026-08-25-data-pipeline-design.md`
 
 ## Global Constraints
 
