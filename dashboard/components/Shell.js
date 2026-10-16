@@ -36,7 +36,9 @@ function isDesktop() {
   const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle|PlayBook|BlackBerry|Opera Mini|IEMobile/i.test(ua);
   const iPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
   const touchOnly = window.matchMedia("(pointer: coarse)").matches && !window.matchMedia("(any-pointer: fine)").matches;
-  return !(mobileUA || iPadOS || touchOnly || window.innerWidth < 1200);
+  // touch screen that is phone-sized or ARM Linux (Android "desktop site", even with a stylus or mouse)
+  const touchDevice = navigator.maxTouchPoints > 0 && (Math.min(screen.width, screen.height) < 600 || (/Linux (arm|aarch)|Android/i.test(navigator.platform) && !/CrOS/.test(ua)));
+  return !(mobileUA || iPadOS || touchOnly || touchDevice || window.innerWidth < 1200);
 }
 
 function DeviceGate() {
